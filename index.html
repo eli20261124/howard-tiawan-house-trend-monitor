@@ -1136,11 +1136,11 @@ function updateInsightRows(rows, pts) {
       ${premiumHtml}
     </div>
     <div class="insight-row">
-      <span class="label">� Absorption Rate</span>
+      <span class="label">📦 Absorption Rate</span>
       ${absorptionHtml}
     </div>
     <div class="insight-row">
-      <span class="label">�🔥 Hottest District</span>
+      <span class="label">🔥 Hottest District</span>
       <span class="value ${tlClass(hotYoY)}">${hotLabel} ${hotVal}</span>
     </div>
     <div class="insight-row">
@@ -1211,6 +1211,29 @@ function updateMetricCards(city, ts, rows, pts) {
   }
 }
 
+/* ── Sparkline helper ────────────────────────────────────────────────────── */
+
+/**
+ * Build a tiny SVG polyline from an array of values.
+ * Returns an <svg> string 56×24 px showing the district price trend.
+ */
+function sparklineSVG(values, isRising) {
+  const pts = values.filter(v => v != null && !isNaN(v));
+  if (pts.length < 2) return '<span style="color:#333d55;font-size:.65rem">—</span>';
+  const W = 56, H = 20;
+  const mn = Math.min(...pts), mx = Math.max(...pts);
+  const range = mx - mn || 1;
+  const coords = pts.map((v, i) => {
+    const x = (i / (pts.length - 1)) * W;
+    const y = H - ((v - mn) / range) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const col = isRising ? '#ff6b85' : '#00f5c4';
+  return `<svg width="${W}" height="${H + 4}" viewBox="0 0 ${W} ${H + 4}" style="display:inline-block;vertical-align:middle">
+    <polyline points="${coords}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
 /* ── Summary table ──────────────────────────────────────────────────────── */
 
 function buildSummaryColumns(sample) {
@@ -1261,6 +1284,15 @@ function buildSummaryColumns(sample) {
       },
     });
   }
+
+  // Sparkline column — populated after table init via drawCallback
+  cols.push({
+    title: 'Trend 走勢',
+    data:  'District',
+    orderable: false,
+    render: () => '<span class="spark-placeholder">…</span>',
+  });
+
   return cols;
 }
 
@@ -1321,6 +1353,22 @@ async function loadSummary(cityCode) {
     pageLength: 25,
     dom: '<"dt-controls"lf>rtp',
     language: { search: '🔍', searchPlaceholder: 'Search district…', lengthMenu: 'Show _MENU_' },
+    drawCallback() {
+      // Fill sparklines for visible rows
+      const ts = currentTimeseries;
+      if (!ts || !ts.districts) return;
+      $(`#${tableId} tbody tr`).each(function () {
+        const $row = $(this);
+        const districtText = $row.find('.district-link').text();
+        if (!districtText) return;
+        const series = ts.districts[districtText];
+        if (!series || series.length < 2) return;
+        const vals = ts.quarters.map((_, i) => series[i]);
+        const nonNull = vals.filter(v => v != null);
+        const isRising = nonNull.length >= 2 && nonNull[nonNull.length - 1] > nonNull[0];
+        $row.find('.spark-placeholder').replaceWith(sparklineSVG(vals, isRising));
+      });
+    },
   });
 
   updateMetricCards(city, currentTimeseries || {}, rows, currentPresaleTimeseries);
