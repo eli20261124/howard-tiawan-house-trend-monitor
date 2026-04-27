@@ -51,6 +51,10 @@ def city_csv_url(code: str) -> str:
     # The MOI endpoint uses lowercase code in the filename
     return f"{BASE_URL}/Download?fileName={code.lower()}_lvr_land_a.csv"
 
+def city_presale_url(code: str) -> str:
+    """Per-city presale transaction CSV (_b.csv)."""
+    return f"{BASE_URL}/Download?fileName={code.lower()}_lvr_land_b.csv"
+
 OUTPUT_DIR      = Path("data")
 CHUNK_SIZE      = 20_000   # rows per read_csv chunk
 MIN_SAMPLE      = 5        # min transactions for reliable growth-rate display
@@ -212,7 +216,16 @@ def download_city_csv(code: str) -> bytes:
             f"Check {LANDING}"
         )
     return resp.content
-
+def download_presale_csv(code: str) -> bytes:
+    """Download a single city's presale transaction CSV (_b.csv) from MOI."""
+    url = city_presale_url(code)
+    log.info("  GET %s", url)
+    resp = requests.get(url, headers=HEADERS, timeout=120)
+    resp.raise_for_status()
+    ct = resp.headers.get("Content-Type", "")
+    if "text/html" in ct:
+        raise RuntimeError(f"Server returned HTML for presale city {code}.")
+    return resp.content
 # ── CSV reading ────────────────────────────────────────────────────────────────
 
 def _early_filter(df: pd.DataFrame) -> pd.DataFrame:
@@ -242,6 +255,19 @@ def _early_filter(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _early_filter_presale(df: pd.DataFrame) -> pd.DataFrame:
+    """Early filter for presale _b.csv: drop cancelled/terminated contracts."""
+    rn = {k: v for k, v in {"解約情形": "Termination", "備註": "Remarks"}.items()
+          if k in df.columns}
+    df = df.rename(columns=rn)
+    if "Termination" in df.columns:
+        df = df[
+            df["Termination"].isna()
+            | (df["Termination"].astype(str).str.strip() == "")
+        ]
+    return df
+
+
 def read_csv_bytes(raw: bytes) -> pd.DataFrame:
     """
     Read a CSV from raw bytes using chunked I/O and encoding fallback.
@@ -266,6 +292,29 @@ def read_csv_bytes(raw: bytes) -> pd.DataFrame:
             frames = []
             continue
     raise ValueError("CSV unreadable with utf-8, big5, or cp950 encoding")
+
+
+def read_presale_csv_bytes(raw: bytes) -> pd.DataFrame:
+    """Read presale _b.csv bytes with encoding fallback; drops cancelled contracts."""
+    for enc in ("utf-8-sig", "utf-8", "big5", "cp950"):
+        try:
+            frames = []
+            bio = io.BytesIO(raw)
+            for chunk in pd.read_csv(
+                bio,
+                encoding=enc,
+                chunksize=CHUNK_SIZE,
+                low_memory=False,
+                on_bad_lines="skip",
+            ):
+                filtered = _early_filter_presale(chunk)
+                if not filtered.empty:
+                    frames.append(filtered)
+            return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        except (UnicodeDecodeError, LookupError):
+            frames = []
+            continue
+    raise ValueError("Presale CSV unreadable with utf-8, big5, or cp950 encoding")
 
 # ── Cleaning & enrichment ──────────────────────────────────────────────────────
 
@@ -311,6 +360,13 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     df["Status"] = df.apply(_tag_status, axis=1)
 
     return df
+
+
+def clean_presale(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean presale transactions: same pipeline as clean(), also maps ProjectName."""
+    if "建案名稱" in df.columns:
+        df = df.rename(columns={"建案名稱": "ProjectName"})
+    return clean(df)
 
 # ── Trend computation ──────────────────────────────────────────────────────────
 
@@ -452,6 +508,67 @@ def export_timeseries(city_name: str, df: pd.DataFrame) -> None:
     )
 
 
+def export_presale_timeseries(city_name: str, df: pd.DataFrame) -> None:
+    """
+    Write data/{City}/presale_timeseries.json.
+    Same structure as timeseries.json; source field = "presale".
+    """
+    required = {"Quarter", "PricePerPing"}
+    if not required.issubset(df.columns):
+        return
+    clean_df = df.dropna(subset=["Quarter", "PricePerPing"])
+    if clean_df.empty:
+        return
+
+    def _nan_to_none(v) -> Optional[float]:
+        return None if (v is None or (isinstance(v, float) and math.isnan(v))) else round(float(v), 2)
+
+    def _grp_median(x: pd.Series) -> float:
+        t = _trim_outliers(x)
+        return t.median() if len(t) > 0 else float("nan")
+
+    city_agg = (
+        clean_df
+        .groupby("Quarter", sort=True)
+        .agg(
+            city_median=("PricePerPing", _grp_median),
+            city_volume=("PricePerPing", "count"),
+        )
+        .reset_index()
+        .sort_values("Quarter")
+    )
+    all_quarters: list = sorted(city_agg["Quarter"].tolist())
+
+    ts: dict = {
+        "source":      "presale",
+        "quarters":    all_quarters,
+        "city_median": [_nan_to_none(v) for v in city_agg["city_median"].tolist()],
+        "city_volume": city_agg["city_volume"].tolist(),
+        "districts":   {},
+    }
+
+    if "District" in clean_df.columns:
+        for dist, grp in clean_df.groupby("District"):
+            dist_agg = (
+                grp.groupby("Quarter", sort=True)
+                .agg(median=("PricePerPing", _grp_median))
+                .reindex(all_quarters)
+            )
+            ts["districts"][str(dist)] = [
+                _nan_to_none(v) for v in dist_agg["median"].tolist()
+            ]
+
+    city_dir = OUTPUT_DIR / city_name
+    (city_dir / "presale_timeseries.json").write_text(
+        json.dumps(ts, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log.info(
+        "  Wrote presale_timeseries.json (%d quarters, %d districts)",
+        len(all_quarters), len(ts["districts"]),
+    )
+
+
 # ── Export ─────────────────────────────────────────────────────────────────────
 
 def _safe_name(s: str) -> str:
@@ -560,6 +677,16 @@ def run(local_dir: Optional[Path] = None) -> None:
 
         districts = export_city(city_name, df)
         city_districts[city_name] = districts
+
+        # Presale transactions (_b.csv)
+        try:
+            presale_raw = download_presale_csv(code)
+            presale_df = read_presale_csv_bytes(presale_raw)
+            log.info("  Presale: %d rows after early filter", len(presale_df))
+            presale_df = clean_presale(presale_df)
+            export_presale_timeseries(city_name, presale_df)
+        except Exception as exc:
+            log.warning("  Presale skipped for %s: %s", code, exc)
 
     export_manifest(city_districts)
     log.info("Pipeline complete. Output: %s/", OUTPUT_DIR)

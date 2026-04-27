@@ -1378,9 +1378,16 @@ async function updateCharts(cityCode) {
 
   currentTimeseries = ts;
 
-  $('#trend-chart-title').text(`${city.name} — Price Trend 價格走勢`);
+  $('#trend-chart-title').text(`${city.name} — Market Momentum 市場動能`);
 
-  renderTrendChart(ts);
+  // Try to load presale timeseries (graceful fallback)
+  let pts = null;
+  try {
+    const pr = await fetch(`data/${city.folder}/presale_timeseries.json`);
+    if (pr.ok) pts = await pr.json();
+  } catch (_) { /* presale data not yet generated */ }
+
+  renderTrendChart(ts, pts);
   renderComboChart(ts);
 
   // Load summary.csv for Top-10 chart
@@ -1411,28 +1418,49 @@ function _chartScales(yLabel = '') {
   };
 }
 
-function renderTrendChart(ts) {
+function renderTrendChart(ts, pts) {
   const ctx = document.getElementById('chart-trend').getContext('2d');
+  const datasets = [
+    {
+      label: 'Actual 實價登錄 萬/嵪',
+      data:  ts.city_median,
+      borderColor: '#00f5c4',
+      backgroundColor: 'rgba(0,245,196,0.07)',
+      borderWidth: 2.5,
+      pointBackgroundColor: '#00f5c4',
+      pointBorderColor: '#00f5c4',
+      pointRadius: 4,
+      pointHoverRadius: 7,
+      tension: 0.35,
+      fill: true,
+      spanGaps: true,
+    },
+  ];
+
+  if (pts && pts.quarters && pts.quarters.length >= 2) {
+    // Align presale data to the actual-price quarter axis
+    const alignedPresale = ts.quarters.map(q => {
+      const idx = pts.quarters.indexOf(q);
+      return idx >= 0 ? pts.city_median[idx] : null;
+    });
+    datasets.push({
+      label: 'Pre-sale 預售 萬/嵪',
+      data:  alignedPresale,
+      borderColor: '#a259ff',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderDash: [5, 3],
+      pointBackgroundColor: '#a259ff',
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      tension: 0.35,
+      spanGaps: true,
+    });
+  }
+
   chartTrend = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: ts.quarters,
-      datasets: [{
-        label: 'Median 萬/嵪 (city-wide)',
-        data:  ts.city_median,
-        borderColor: '#00f5c4',
-        backgroundColor: 'rgba(0,245,196,0.07)',
-        borderWidth: 2.5,
-        pointBackgroundColor: '#00f5c4',
-        pointBorderColor: '#00f5c4',
-        pointRadius: 4,
-        pointHoverRadius: 7,
-        pointShadowBlur: 10,
-        tension: 0.35,
-        fill: true,
-        spanGaps: true,
-      }],
-    },
+    data: { labels: ts.quarters, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
