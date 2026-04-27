@@ -399,6 +399,16 @@
       font-weight: 700;
       white-space: nowrap;
     }
+    .insight-row .value.tl-red    { color: var(--neon-red); }
+    .insight-row .value.tl-yellow { color: #ffd166; }
+    .insight-row .value.tl-green  { color: var(--neon-cyan); }
+    .insight-row .value.tl-dim    { color: var(--text-muted); }
+    .metric-card.tl-red   { border-color: rgba(255,45,85,.45); }
+    .metric-card.tl-yellow { border-color: rgba(255,209,102,.35); }
+    .metric-card.tl-green  { border-color: rgba(0,245,196,.35); }
+    .metric-card .metric-value.tl-red    { color: var(--neon-red); }
+    .metric-card .metric-value.tl-yellow { color: #ffd166; }
+    .metric-card .metric-value.tl-green  { color: var(--neon-cyan); }
 
     #topbar-legend {
       display: flex;
@@ -845,10 +855,10 @@
           <div class="glass-card chart-card">
             <div class="panel-title-row">
               <div>
-                <div class="eyebrow">Middle Panel</div>
-                <div class="section-title">Future Supply</div>
+                <div class="eyebrow">Price Anchors</div>
+                <div class="section-title">District Benchmark</div>
               </div>
-              <div class="hint">Stacked inventory proxy</div>
+              <div class="hint">Top 10 districts by current median price</div>
             </div>
             <div class="chart-box"><canvas id="chart-top10"></canvas></div>
           </div>
@@ -866,10 +876,10 @@
         <div class="glass-card chart-card">
           <div class="panel-title-row">
             <div>
-              <div class="eyebrow">Right Panel</div>
-              <div class="section-title">Price Anchors</div>
+              <div class="eyebrow">Volume Trend</div>
+              <div class="section-title">Volume &amp; Price</div>
             </div>
-            <div class="hint">Top 10 district benchmark floor</div>
+            <div class="hint">Quarterly transaction volume vs. median price</div>
           </div>
           <div class="chart-box tall"><canvas id="chart-combo"></canvas></div>
         </div>
@@ -1047,25 +1057,75 @@ function renderSearchResults(query) {
   `).join('')).show();
 }
 
+function tlClass(yoy) {
+  if (isNaN(yoy)) return 'tl-dim';
+  if (Math.abs(yoy) > 15) return 'tl-red';
+  if (Math.abs(yoy) > 5)  return 'tl-yellow';
+  return 'tl-green';
+}
+
 function updateInsightRows(rows) {
   const $list = $('#insight-list');
-  const latest = rows.length ? rows.reduce((acc, row) => {
+  if (!rows.length) { $list.html(''); return; }
+
+  // Find most-recent quarter per district
+  const latest = rows.reduce((acc, row) => {
     const key = row.District;
     if (!acc[key] || quarterKey(row.Quarter) > quarterKey(acc[key].Quarter)) acc[key] = row;
     return acc;
-  }, {}) : {};
+  }, {});
 
-  const first = Object.values(latest)[0] || null;
-  const qoq = first && first.QoQ_pct !== '' && first.QoQ_pct != null ? fmtPct(first.QoQ_pct) : 'Insufficient Data';
-  const yoy = first && first.YoY_pct !== '' && first.YoY_pct != null ? fmtPct(first.YoY_pct) : 'Insufficient Data';
-  const trend = first ? (parseFloat(first.QoQ_pct) > 0 ? 'Heating' : parseFloat(first.QoQ_pct) < 0 ? 'Cooling' : 'Flat') : '—';
+  const latestRows = Object.values(latest).filter(r =>
+    parseInt(r.TransactionCount, 10) >= MIN_SAMPLE_JS
+  );
+
+  // Hottest district by YoY
+  const byYoY = latestRows
+    .filter(r => r.YoY_pct !== '' && r.YoY_pct != null && !isNaN(parseFloat(r.YoY_pct)))
+    .sort((a, b) => parseFloat(b.YoY_pct) - parseFloat(a.YoY_pct));
+
+  const hotRow  = byYoY[0] || null;
+  const coolRow = byYoY[byYoY.length - 1] || null;
+
+  const hotYoY  = hotRow  ? parseFloat(hotRow.YoY_pct)  : NaN;
+  const coolYoY = coolRow ? parseFloat(coolRow.YoY_pct) : NaN;
+
+  const risingCount  = latestRows.filter(r => parseFloat(r.YoY_pct) > 0).length;
+  const fallingCount = latestRows.filter(r => parseFloat(r.YoY_pct) < 0).length;
+  const lowN = Object.values(rows.reduce((acc, row) => {
+    const key = row.District;
+    if (!acc[key] || quarterKey(row.Quarter) > quarterKey(acc[key].Quarter)) acc[key] = row;
+    return acc;
+  }, {})).filter(r => parseInt(r.TransactionCount, 10) < MIN_SAMPLE_JS).length;
+
+  const hotLabel  = hotRow  ? hotRow.District  : '—';
+  const coolLabel = coolRow ? coolRow.District : '—';
+  const hotVal    = isNaN(hotYoY)  ? '— ' : (hotYoY  > 0 ? '+' : '') + hotYoY.toFixed(1)  + '%';
+  const coolVal   = isNaN(coolYoY) ? '— ' : (coolYoY > 0 ? '+' : '') + coolYoY.toFixed(1) + '%';
+  const momentum  = risingCount > fallingCount ? '↑ Heating' : risingCount < fallingCount ? '↓ Cooling' : '→ Flat';
+  const momentumClass = risingCount > fallingCount ? 'tl-red' : risingCount < fallingCount ? 'tl-green' : 'tl-dim';
 
   $list.html(`
-    <div class="insight-row"><span class="label">⚖️ Premium Gap</span><span class="value">${qoq}</span></div>
-    <div class="insight-row"><span class="label">📦 Absorption Rate</span><span class="value">${yoy}</span></div>
-    <div class="insight-row"><span class="label">🔍 Value / Spec</span><span class="value">Track in Phase 2</span></div>
-    <div class="insight-row"><span class="label">🔔 Resale Pressure</span><span class="value">${trend}</span></div>
-    <div class="insight-row"><span class="label">🚀 Infrastructure</span><span class="value">Link later</span></div>
+    <div class="insight-row">
+      <span class="label">🔥 Hottest District</span>
+      <span class="value ${tlClass(hotYoY)}">${hotLabel} ${hotVal}</span>
+    </div>
+    <div class="insight-row">
+      <span class="label">🧊 Coolest District</span>
+      <span class="value ${tlClass(coolYoY)}">${coolLabel} ${coolVal}</span>
+    </div>
+    <div class="insight-row">
+      <span class="label">📊 Districts Rising / Falling</span>
+      <span class="value tl-dim">${risingCount} ↑ &nbsp; ${fallingCount} ↓</span>
+    </div>
+    <div class="insight-row">
+      <span class="label">📈 City Momentum</span>
+      <span class="value ${momentumClass}">${momentum}</span>
+    </div>
+    <div class="insight-row">
+      <span class="label">⚠️ Low-confidence Districts</span>
+      <span class="value ${lowN > 0 ? 'tl-yellow' : 'tl-green'}">${lowN} (N&lt;${MIN_SAMPLE_JS})</span>
+    </div>
   `);
 }
 
@@ -1073,21 +1133,42 @@ function updateMetricCards(city, ts, rows) {
   const lastQuarter = latestNonNull(ts.quarters || []);
   const latestPrice = latestNonNull(ts.city_median || []);
   const latestCount = latestNonNull(ts.city_volume || []);
-  const latestRow = rows.reduce((acc, row) => {
-    if (!acc || quarterKey(row.Quarter) > quarterKey(acc.Quarter)) return row;
+
+  // Latest quarter per district for city-level signal
+  const latestPerDistrict = rows.reduce((acc, row) => {
+    if (!acc[row.District] || quarterKey(row.Quarter) > quarterKey(acc[row.District].Quarter))
+      acc[row.District] = row;
     return acc;
-  }, null);
+  }, {});
+  const distRows = Object.values(latestPerDistrict).filter(r =>
+    parseInt(r.TransactionCount, 10) >= MIN_SAMPLE_JS
+  );
+  const avgYoY = distRows.reduce((s, r) => s + (parseFloat(r.YoY_pct) || 0), 0) / (distRows.length || 1);
+  const avgQoQ = distRows.reduce((s, r) => s + (parseFloat(r.QoQ_pct) || 0), 0) / (distRows.length || 1);
+  const signalTxt = distRows.length
+    ? `YoY ${avgYoY >= 0 ? '+' : ''}${avgYoY.toFixed(1)}%`
+    : '—';
+  const signalClass = tlClass(avgYoY);
 
   $('#metric-area').text(city ? city.name : '—');
-  $('#metric-area-note').text(city ? `${city.folder} · ${rows.length} rows` : 'Use search to jump to an area');
+  $('#metric-area-note').text(city ? `${Object.keys(latestPerDistrict).length} districts loaded` : 'Use search to jump to an area');
   $('#metric-quarter').text(lastQuarter || '—');
   $('#metric-price').text(latestPrice != null ? `${fmt(latestPrice)} 萬` : '—');
   $('#metric-count').text(latestCount != null ? `${fmt(latestCount, 0)} 件` : '—');
-  $('#metric-signal').text(latestRow && latestRow.QoQ_pct != null ? fmtPct(latestRow.QoQ_pct) : '—');
+  $('#metric-signal').text(signalTxt);
   $('#metric-quarter-note').text(city ? 'City-wide median price/ping' : 'No city selected');
-  $('#metric-price-note').text(latestRow && latestRow.TransactionCount < MIN_SAMPLE_JS ? 'Low sample count' : 'Trimmed median');
+  $('#metric-price-note').text('Trimmed median (excl. top/bottom 5%)');
   $('#metric-count-note').text(city ? 'City-wide quarter volume' : 'No data loaded');
-  $('#metric-signal-note').text(latestRow && latestRow.TransactionCount < MIN_SAMPLE_JS ? 'Insufficient Data' : 'QoQ reliability');
+  $('#metric-signal-note').text(`QoQ avg ${avgQoQ >= 0 ? '+' : ''}${avgQoQ.toFixed(1)}%`);
+
+  // Traffic-light on signal card
+  const $signalCard = $('#metric-signal').closest('.metric-card');
+  $signalCard.removeClass('tl-red tl-yellow tl-green');
+  $('#metric-signal').removeClass('tl-red tl-yellow tl-green tl-dim');
+  if (distRows.length) {
+    $signalCard.addClass(signalClass);
+    $('#metric-signal').addClass(signalClass);
+  }
 }
 
 /* ── Summary table ──────────────────────────────────────────────────────── */
@@ -1181,6 +1262,7 @@ async function loadSummary(cityCode) {
   }
 
   currentSummaryRows = rows;
+  updateInsightRows(rows);
 
   const tableId = `tbl-${city.folder}`;
   wrap.html(`
@@ -1408,51 +1490,58 @@ function overlayDistrictTrend(districtName, ts) {
 }
 
 function renderTop10Chart(rows) {
-  // Find most recent quarter per district
+  // Show top-10 districts ranked by current (most-recent quarter) median price
   const latest = {};
   rows.forEach(r => {
     const d = r.District;
-    if (!latest[d] || r.Quarter > latest[d].Quarter) latest[d] = r;
+    if (!latest[d] || quarterKey(r.Quarter) > quarterKey(latest[d].Quarter)) latest[d] = r;
   });
 
   const top10 = Object.values(latest)
     .filter(r => {
-      const yoy = parseFloat(r.YoY_pct);
-      const cnt = parseInt(r.TransactionCount, 10);
-      return !isNaN(yoy) && cnt >= MIN_SAMPLE_JS;
+      const price = parseFloat(r.MedianPricePerPing);
+      const cnt   = parseInt(r.TransactionCount, 10);
+      return !isNaN(price) && price > 0 && cnt >= MIN_SAMPLE_JS;
     })
-    .sort((a, b) => parseFloat(b.YoY_pct) - parseFloat(a.YoY_pct))
+    .sort((a, b) => parseFloat(b.MedianPricePerPing) - parseFloat(a.MedianPricePerPing))
     .slice(0, 10);
 
   const ctx = document.getElementById('chart-top10').getContext('2d');
 
   if (top10.length === 0) {
-    // Draw placeholder text
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.fillStyle = '#5a6480';
     ctx.font = '13px Inter, system-ui';
     ctx.textAlign = 'center';
-    ctx.fillText('Insufficient YoY data — run backfill for full history',
-                 ctx.canvas.width / 2, ctx.canvas.height / 2);
+    ctx.fillText('No price data available', ctx.canvas.width / 2, ctx.canvas.height / 2);
     return;
   }
 
-  const values = top10.map(r => parseFloat(r.YoY_pct));
-  const labels = top10.map(r => r.District);
-  const bgColors     = values.map(v => v >= 0 ? 'rgba(255,45,85,0.55)'  : 'rgba(0,245,196,0.45)');
-  const borderColors = values.map(v => v >= 0 ? '#ff2d55' : '#00f5c4');
+  const values    = top10.map(r => parseFloat(r.MedianPricePerPing));
+  const labels    = top10.map(r => r.District);
+  const quarters  = top10.map(r => r.Quarter);
+
+  // Colour gradient: top districts → gold, lower → blue
+  const bgColors = values.map((_, i) =>
+    i === 0 ? 'rgba(255,209,102,0.75)' :
+    i <  3  ? 'rgba(255,150,70,0.55)'  :
+              'rgba(77,159,255,0.40)');
+  const borderColors = values.map((_, i) =>
+    i === 0 ? '#ffd166' :
+    i <  3  ? '#ff9646' :
+              '#4d9fff');
 
   chartTop10 = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: [{
-        label: 'YoY %',
+        label: 'Median 萬/嵪',
         data: values,
         backgroundColor: bgColors,
         borderColor: borderColors,
-        borderWidth: 1,
-        borderRadius: 3,
+        borderWidth: 1.5,
+        borderRadius: 4,
       }],
     },
     options: {
@@ -1464,18 +1553,21 @@ function renderTop10Chart(rows) {
         legend: { display: false },
         tooltip: {
           ...TOOLTIP_STYLE,
-          borderColor: '#ff2d55',
-          titleColor:  '#e8eaf2',
-          bodyColor:   '#ff6b85',
+          borderColor: '#ffd166',
+          titleColor:  '#ffd166',
+          bodyColor:   '#e8eaf2',
           callbacks: {
-            label: ctx => ` YoY: ${ctx.parsed.x >= 0 ? '+' : ''}${ctx.parsed.x.toFixed(2)}%`,
+            label: (ctx) => {
+              const q = quarters[ctx.dataIndex];
+              return ` ${ctx.parsed.x.toFixed(1)} 萬/嵪  (${q})`;
+            },
           },
         },
       },
       scales: {
         x: {
           ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
-                   callback: v => v + '%' },
+                   callback: v => v + '萬' },
           grid:  { color: CHART_GRID },
           border: { color: 'rgba(255,255,255,0.1)' },
         },
