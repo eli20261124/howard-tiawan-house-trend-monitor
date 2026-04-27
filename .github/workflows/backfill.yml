@@ -1,0 +1,61 @@
+name: Backfill Historical Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      seasons:
+        description: >
+          Space-separated list of seasons to backfill (e.g. "112S1 112S2 113S4").
+          Leave blank to run the full default set (2023-2025 / Minguo 112-114).
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    # Each season ZIP is ~80-120 MB; allow ample time for 12 seasons
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backfill
+        run: |
+          if [ -n "${{ github.event.inputs.seasons }}" ]; then
+            python main.py --seasons ${{ github.event.inputs.seasons }}
+          else
+            python main.py --backfill
+          fi
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - name: Commit backfilled data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet \
+            || git commit -m "auto: backfill historical data $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push

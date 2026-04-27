@@ -497,7 +497,48 @@ def export_timeseries(city_name: str, df: pd.DataFrame) -> None:
                 _nan_to_none(v) for v in dist_agg["median"].tolist()
             ]
 
+    # ── Merge with any existing timeseries.json (preserves live-pipeline data) ─
     city_dir = OUTPUT_DIR / city_name
+    existing_path = city_dir / "timeseries.json"
+    if existing_path.exists():
+        try:
+            existing = json.loads(existing_path.read_text(encoding="utf-8"))
+            ex_quarters = existing.get("quarters", [])
+            # Build a unified quarter list
+            all_merged = sorted(set(all_quarters) | set(ex_quarters))
+            def _align(series, quarters, merged):
+                q_map = {q: v for q, v in zip(quarters, series)}
+                return [q_map.get(q) for q in merged]
+            merged_ts = {
+                "quarters":    all_merged,
+                "city_median": _align(ts["city_median"], all_quarters, all_merged),
+                "city_volume": _align(ts["city_volume"], all_quarters, all_merged),
+                "districts":   {},
+            }
+            # Fill any newly-added quarter gaps from existing data
+            ex_median_map = {q: v for q, v in zip(ex_quarters, existing.get("city_median", []))}
+            ex_volume_map = {q: v for q, v in zip(ex_quarters, existing.get("city_volume", []))}
+            for i, q in enumerate(all_merged):
+                if merged_ts["city_median"][i] is None and ex_median_map.get(q) is not None:
+                    merged_ts["city_median"][i] = ex_median_map[q]
+                if merged_ts["city_volume"][i] is None and ex_volume_map.get(q) is not None:
+                    merged_ts["city_volume"][i] = ex_volume_map[q]
+            # Merge district series
+            all_districts = set(ts["districts"]) | set(existing.get("districts", {}))
+            for dist in all_districts:
+                new_series = _align(ts["districts"].get(dist, [None] * len(all_quarters)),
+                                    all_quarters, all_merged)
+                ex_dist = existing.get("districts", {}).get(dist, [])
+                ex_dist_map = {q: v for q, v in zip(ex_quarters, ex_dist)}
+                for i, q in enumerate(all_merged):
+                    if new_series[i] is None and ex_dist_map.get(q) is not None:
+                        new_series[i] = ex_dist_map[q]
+                merged_ts["districts"][dist] = new_series
+            ts = merged_ts
+            all_quarters = all_merged
+        except Exception as exc:
+            log.warning("  Could not merge existing timeseries.json: %s", exc)
+
     (city_dir / "timeseries.json").write_text(
         json.dumps(ts, ensure_ascii=False),
         encoding="utf-8",
@@ -714,9 +755,13 @@ def download_season_zip(season_code: str) -> bytes:
     return b"".join(chunks)
 
 
-def _extract_city_csv_from_zip(zip_bytes: bytes, city_code: str) -> Optional[bytes]:
-    """Extract one city's CSV from a season ZIP blob held in memory."""
-    target = f"{city_code.lower()}_lvr_land_a.csv"
+def _extract_city_csv_from_zip(zip_bytes: bytes, city_code: str,
+                               suffix: str = "a") -> Optional[bytes]:
+    """
+    Extract one city's CSV from a season ZIP blob held in memory.
+    suffix: 'a' for actual price registration, 'b' for presale transactions.
+    """
+    target = f"{city_code.lower()}_lvr_land_{suffix}.csv"
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for name in zf.namelist():
@@ -741,6 +786,7 @@ def run_backfill(seasons: Optional[list] = None) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     city_frames: dict = {CITY_MAP[c][0]: [] for c in CITY_MAP}
+    city_presale_frames: dict = {CITY_MAP[c][0]: [] for c in CITY_MAP}
 
     for season in seasons:
         log.info("Backfilling season %s …", season)
@@ -751,18 +797,29 @@ def run_backfill(seasons: Optional[list] = None) -> None:
             continue
 
         for code, (city_name, _) in CITY_MAP.items():
-            csv_bytes = _extract_city_csv_from_zip(zip_bytes, code)
+            # Actual price (_a.csv)
+            csv_bytes = _extract_city_csv_from_zip(zip_bytes, code, "a")
             if csv_bytes is None:
-                log.warning("  %s not found in season %s", city_name, season)
-                continue
-            try:
-                df = read_csv_bytes(csv_bytes)
-            except ValueError as exc:
-                log.error("  Encoding error %s %s: %s", city_name, season, exc)
-                continue
-            df = clean(df)
-            city_frames[city_name].append(df)
-            log.info("  %s %s: %d rows", city_name, season, len(df))
+                log.warning("  %s _a not found in season %s", city_name, season)
+            else:
+                try:
+                    df = read_csv_bytes(csv_bytes)
+                    df = clean(df)
+                    city_frames[city_name].append(df)
+                    log.info("  %s %s actual: %d rows", city_name, season, len(df))
+                except ValueError as exc:
+                    log.error("  Encoding error %s %s _a: %s", city_name, season, exc)
+            # Presale (_b.csv)
+            pb_bytes = _extract_city_csv_from_zip(zip_bytes, code, "b")
+            if pb_bytes is not None:
+                try:
+                    pf = read_presale_csv_bytes(pb_bytes)
+                    pf = _early_filter_presale(pf)
+                    pf = clean_presale(pf)
+                    city_presale_frames[city_name].append(pf)
+                    log.info("  %s %s presale: %d rows", city_name, season, len(pf))
+                except Exception as exc:
+                    log.warning("  Presale parse error %s %s: %s", city_name, season, exc)
 
     city_districts: dict = {}
     for city_name, frames in city_frames.items():
@@ -778,6 +835,13 @@ def run_backfill(seasons: Optional[list] = None) -> None:
             summary.to_csv(city_dir / "summary.csv", index=False, encoding="utf-8-sig")
             log.info("  %s: %d summary rows written", city_name, len(summary))
         export_timeseries(city_name, combined)
+
+        # Presale
+        pframes = city_presale_frames.get(city_name, [])
+        if pframes:
+            pcombined = pd.concat(pframes, ignore_index=True).drop_duplicates()
+            export_presale_timeseries(city_name, pcombined)
+
         city_districts[city_name] = []
 
     export_manifest(city_districts)
