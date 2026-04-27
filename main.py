@@ -11,8 +11,10 @@ Usage:
 import io
 import json
 import logging
+import math
 import re
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -49,8 +51,20 @@ def city_csv_url(code: str) -> str:
     # The MOI endpoint uses lowercase code in the filename
     return f"{BASE_URL}/Download?fileName={code.lower()}_lvr_land_a.csv"
 
-OUTPUT_DIR = Path("data")
-CHUNK_SIZE = 20_000  # rows per read_csv chunk
+OUTPUT_DIR      = Path("data")
+CHUNK_SIZE      = 20_000   # rows per read_csv chunk
+MIN_SAMPLE      = 5        # min transactions for reliable growth-rate display
+TRIM_PERCENTILE = 0.05     # clip bottom/top 5 % of price samples per group
+
+# Historical seasonal download — national ZIP (~80–120 MB each)
+HIST_URL = f"{BASE_URL}/DownloadHistory?type=season&fileName="
+
+# Seasons to backfill: Minguo 112 = 2023 CE, 113 = 2024, 114 = 2025
+BACKFILL_SEASONS = [
+    "112S1", "112S2", "112S3", "112S4",   # 2023
+    "113S1", "113S2", "113S3", "113S4",   # 2024
+    "114S1", "114S2", "114S3", "114S4",   # 2025
+]
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -300,49 +314,143 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Trend computation ──────────────────────────────────────────────────────────
 
+def _trim_outliers(s: pd.Series) -> pd.Series:
+    """Clip bottom/top TRIM_PERCENTILE fraction of a price series (per-group call)."""
+    if len(s) < 4:
+        return s
+    lo = s.quantile(TRIM_PERCENTILE)
+    hi = s.quantile(1.0 - TRIM_PERCENTILE)
+    return s[(s >= lo) & (s <= hi)]
+
+
 def compute_trend(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate cleaned transactions into a quarterly district-level trend table.
+    Statistical rules:
+      - Trimmed median (outliers clipped at TRIM_PERCENTILE) replaces raw mean
+      - QoQ/YoY suppressed to NaN when TransactionCount < MIN_SAMPLE
     Computes:
-      - AvgPricePerPing  (mean price per Ping in 10k TWD)
-      - TransactionCount (sample size — important for reliability check)
-      - QoQ_pct          (quarter-on-quarter % change vs. prior quarter)
-      - YoY_pct          (year-on-year % change vs. same quarter last year)
-    Missing prior periods are left as NaN (not synthesized as 0).
+      - MedianPricePerPing  (trimmed median price per Ping in 10k TWD)
+      - TransactionCount    (post-trim sample size)
+      - QoQ_pct             (quarter-on-quarter % — NaN if N < MIN_SAMPLE)
+      - YoY_pct             (year-on-year %       — NaN if N < MIN_SAMPLE)
     """
     required = {"District", "Quarter", "PricePerPing"}
     if not required.issubset(df.columns):
         log.warning("Missing columns for trend: %s", required - set(df.columns))
         return pd.DataFrame()
 
+    clean_df = df.dropna(subset=list(required))
+
+    def _grp_median(x: pd.Series) -> float:
+        t = _trim_outliers(x)
+        return t.median() if len(t) > 0 else float("nan")
+
+    def _grp_count(x: pd.Series) -> int:
+        return len(_trim_outliers(x))
+
     agg = (
-        df.dropna(subset=list(required))
+        clean_df
         .groupby(["District", "Quarter"], sort=True)
         .agg(
-            AvgPricePerPing =("PricePerPing", "mean"),
-            TransactionCount=("PricePerPing", "count"),
+            MedianPricePerPing=("PricePerPing", _grp_median),
+            TransactionCount  =("PricePerPing", _grp_count),
         )
         .reset_index()
     )
-    agg["AvgPricePerPing"] = agg["AvgPricePerPing"].round(2)
+    agg["MedianPricePerPing"] = agg["MedianPricePerPing"].round(2)
 
     # QoQ: immediately preceding quarter for the same district
     agg["QoQ_pct"] = (
-        agg.groupby("District")["AvgPricePerPing"]
-        .pct_change()
+        agg.groupby("District")["MedianPricePerPing"]
+        .pct_change(periods=1)
         .mul(100)
         .round(2)
     )
 
-    # YoY: same quarter 4 periods back (works correctly only when data covers ≥5 quarters)
+    # YoY: same quarter 4 periods back
     agg["YoY_pct"] = (
-        agg.groupby("District")["AvgPricePerPing"]
+        agg.groupby("District")["MedianPricePerPing"]
         .pct_change(periods=4)
         .mul(100)
         .round(2)
     )
 
+    # Suppress growth rates where sample size is below minimum threshold
+    low_n = agg["TransactionCount"] < MIN_SAMPLE
+    agg.loc[low_n, ["QoQ_pct", "YoY_pct"]] = float("nan")
+
     return agg
+
+
+def export_timeseries(city_name: str, df: pd.DataFrame) -> None:
+    """
+    Write data/{City}/timeseries.json for Chart.js.
+    Shape:
+      {
+        "quarters":    ["2023Q1", ...],          # sorted chronologically
+        "city_median": [52.3, null, 54.1, ...],  # city-wide trimmed median
+        "city_volume": [1200, null, 980,  ...],  # city-wide transaction count
+        "districts":   {"中山區": [55.1, null, ...], ...}  # aligned to quarters
+      }
+    All value arrays are 1-to-1 with "quarters"; null = no data.
+    """
+    required = {"Quarter", "PricePerPing"}
+    if not required.issubset(df.columns):
+        return
+    clean_df = df.dropna(subset=["Quarter", "PricePerPing"])
+    if clean_df.empty:
+        return
+
+    def _nan_to_none(v) -> Optional[float]:
+        return None if (v is None or (isinstance(v, float) and math.isnan(v))) else round(float(v), 2)
+
+    def _grp_median(x: pd.Series) -> float:
+        t = _trim_outliers(x)
+        return t.median() if len(t) > 0 else float("nan")
+
+    # ── City-level ────────────────────────────────────────────────────────────
+    city_agg = (
+        clean_df
+        .groupby("Quarter", sort=True)
+        .agg(
+            city_median=("PricePerPing", _grp_median),
+            city_volume=("PricePerPing", "count"),
+        )
+        .reset_index()
+        .sort_values("Quarter")
+    )
+    all_quarters: list = sorted(city_agg["Quarter"].tolist())
+
+    ts: dict = {
+        "quarters":    all_quarters,
+        "city_median": [_nan_to_none(v) for v in city_agg["city_median"].tolist()],
+        "city_volume": city_agg["city_volume"].tolist(),
+        "districts":   {},
+    }
+
+    # ── Per-district arrays (aligned to all_quarters) ─────────────────────────
+    if "District" in clean_df.columns:
+        for dist, grp in clean_df.groupby("District"):
+            dist_agg = (
+                grp.groupby("Quarter", sort=True)
+                .agg(median=("PricePerPing", _grp_median))
+                .reindex(all_quarters)   # fill missing quarters with NaN
+            )
+            ts["districts"][str(dist)] = [
+                _nan_to_none(v) for v in dist_agg["median"].tolist()
+            ]
+
+    city_dir = OUTPUT_DIR / city_name
+    (city_dir / "timeseries.json").write_text(
+        json.dumps(ts, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log.info(
+        "  Wrote timeseries.json (%d quarters, %d districts)",
+        len(all_quarters), len(ts["districts"]),
+    )
+
 
 # ── Export ─────────────────────────────────────────────────────────────────────
 
@@ -390,6 +498,7 @@ def export_city(city_name: str, df: pd.DataFrame) -> list:
     else:
         log.warning("  %s: no summary data produced", city_name)
 
+    export_timeseries(city_name, df)
     return districts
 
 
@@ -456,6 +565,119 @@ def run(local_dir: Optional[Path] = None) -> None:
     log.info("Pipeline complete. Output: %s/", OUTPUT_DIR)
 
 
+# ── Historical backfill ───────────────────────────────────────────────────────
+
+def download_season_zip(season_code: str) -> bytes:
+    """Download a full national seasonal ZIP from the MOI DownloadHistory endpoint.
+    Each ZIP is ~80–120 MB and contains per-city CSVs for an entire quarter.
+    """
+    url = HIST_URL + season_code
+    log.info("  GET %s  (~80–120 MB, may take several minutes) …", url)
+    resp = requests.get(url, headers=HEADERS, timeout=600, stream=True)
+    resp.raise_for_status()
+    ct = resp.headers.get("Content-Type", "")
+    if "text/html" in ct:
+        raise RuntimeError(
+            f"Server returned HTML for season {season_code}. "
+            "Endpoint may have changed."
+        )
+    chunks = []
+    for chunk in resp.iter_content(chunk_size=131_072):   # 128 KB chunks
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _extract_city_csv_from_zip(zip_bytes: bytes, city_code: str) -> Optional[bytes]:
+    """Extract one city's CSV from a season ZIP blob held in memory."""
+    target = f"{city_code.lower()}_lvr_land_a.csv"
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for name in zf.namelist():
+                if name.lower().endswith(target):
+                    return zf.read(name)
+    except zipfile.BadZipFile as exc:
+        log.warning("  BadZipFile: %s", exc)
+    return None
+
+
+def run_backfill(seasons: Optional[list] = None) -> None:
+    """
+    Download historical seasonal ZIPs and rebuild summary + timeseries data
+    for all six cities.  Per-district detail CSVs are NOT written (too large).
+
+    Season notation: Minguo year + S + quarter number
+      112S1 = Jan–Mar 2023,  113S1 = Jan–Mar 2024,  114S4 = Oct–Dec 2025
+
+    Tip: run via GitHub Actions for fast download speeds.
+    """
+    seasons = seasons or BACKFILL_SEASONS
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    city_frames: dict = {CITY_MAP[c][0]: [] for c in CITY_MAP}
+
+    for season in seasons:
+        log.info("Backfilling season %s …", season)
+        try:
+            zip_bytes = download_season_zip(season)
+        except Exception as exc:
+            log.error("  Download failed for %s: %s", season, exc)
+            continue
+
+        for code, (city_name, _) in CITY_MAP.items():
+            csv_bytes = _extract_city_csv_from_zip(zip_bytes, code)
+            if csv_bytes is None:
+                log.warning("  %s not found in season %s", city_name, season)
+                continue
+            try:
+                df = read_csv_bytes(csv_bytes)
+            except ValueError as exc:
+                log.error("  Encoding error %s %s: %s", city_name, season, exc)
+                continue
+            df = clean(df)
+            city_frames[city_name].append(df)
+            log.info("  %s %s: %d rows", city_name, season, len(df))
+
+    city_districts: dict = {}
+    for city_name, frames in city_frames.items():
+        if not frames:
+            log.warning("No backfill data for %s — skipping", city_name)
+            continue
+        combined = pd.concat(frames, ignore_index=True).drop_duplicates()
+        city_dir = OUTPUT_DIR / city_name
+        city_dir.mkdir(parents=True, exist_ok=True)
+
+        summary = compute_trend(combined)
+        if not summary.empty:
+            summary.to_csv(city_dir / "summary.csv", index=False, encoding="utf-8-sig")
+            log.info("  %s: %d summary rows written", city_name, len(summary))
+        export_timeseries(city_name, combined)
+        city_districts[city_name] = []
+
+    export_manifest(city_districts)
+    log.info("Backfill complete — %d seasons processed.", len(seasons))
+
+
 if __name__ == "__main__":
-    arg = Path(sys.argv[1]) if len(sys.argv) > 1 else None
-    run(arg)
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Taiwan Real Estate Pipeline — MOI 不動產實價登錄"
+    )
+    parser.add_argument(
+        "local_dir", nargs="?", type=Path,
+        help="Path to local pre-downloaded CSV directory (skips live download)",
+    )
+    parser.add_argument(
+        "--backfill", action="store_true",
+        help="Download historical seasonal ZIPs for 2023–2025 (Minguo 112–114)",
+    )
+    parser.add_argument(
+        "--seasons", nargs="+", metavar="SEASON",
+        help="Specific seasons to backfill, e.g. --seasons 112S1 113S2 114S4",
+    )
+    args = parser.parse_args()
+
+    if args.backfill or args.seasons:
+        run_backfill(seasons=args.seasons)
+    else:
+        run(local_dir=args.local_dir)

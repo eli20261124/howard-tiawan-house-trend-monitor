@@ -507,7 +507,36 @@
       border-color: rgba(0,245,196,.5);
       text-shadow: 0 0 8px rgba(0,245,196,.5);
     }
+    /* ── Charts ─────────────────────────────────────────────────────────────── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .charts-row2 { margin-bottom: 1.25rem; }
+    .chart-wrap  { position: relative; height: 280px; }
 
+    .chart-no-data {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      font-size: .78rem;
+      gap: .5rem;
+      text-align: center;
+      line-height: 1.6;
+    }
+    .chart-no-data .cmd {
+      font-family: monospace;
+      background: rgba(255,255,255,.06);
+      padding: .2em .6em;
+      border-radius: 4px;
+      color: var(--neon-cyan);
+      font-size: .75rem;
+    }
     /* ── Mobile hamburger ──────────────────────────────────────────────────── */
     #menu-toggle {
       display: none;
@@ -571,6 +600,9 @@
       #content { padding: .9rem; }
 
       .glass-card { padding: .9rem; }
+
+      .charts-grid { grid-template-columns: 1fr; }
+      .chart-wrap  { height: 220px; }
     }
   </style>
 </head>
@@ -621,6 +653,44 @@
     <!-- Content -->
     <div id="content">
 
+      <!-- Charts row 1: trend + top-10 -->
+      <div class="charts-grid" id="charts-row1" style="display:none">
+        <div class="glass-card chart-card">
+          <div class="section-header">
+            <div class="section-title" id="trend-chart-title">Price Trend 價格走勢</div>
+            <div class="section-hint">City-wide median · click district row to overlay</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
+        </div>
+        <div class="glass-card chart-card">
+          <div class="section-header">
+            <div class="section-title">Top 10 YoY 年增率排行</div>
+            <div class="section-hint">Districts with sufficient data (N≥5)</div>
+          </div>
+          <div class="chart-wrap"><canvas id="chart-top10"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Charts row 2: volume-price combo -->
+      <div class="charts-row2" id="charts-row2" style="display:none">
+        <div class="glass-card chart-card">
+          <div class="section-header">
+            <div class="section-title">量價關係 Volume × Price</div>
+            <div class="section-hint">Bars = transaction count · Line = median price/ping</div>
+          </div>
+          <div class="chart-wrap" style="height:240px"><canvas id="chart-combo"></canvas></div>
+        </div>
+      </div>
+
+      <!-- No-data chart banner (shown when timeseries.json is missing) -->
+      <div id="charts-no-data" style="display:none" class="glass-card" style="margin-bottom:1.25rem">
+        <div class="chart-no-data">
+          ⚡ Charts require historical data. Run:
+          <span class="cmd">python main.py --backfill</span>
+          to download 2023–2025 seasonal data, then refresh.
+        </div>
+      </div>
+
       <!-- Summary card -->
       <div class="glass-card" id="summary-card">
         <div class="section-header">
@@ -655,6 +725,7 @@
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <script>
 /* ── Utility ────────────────────────────────────────────────────────────── */
@@ -699,6 +770,21 @@ let summaryDT = null;    // active DataTables instance for summary
 let detailDT  = null;    // active DataTables instance for detail
 let activeCity = null;   // currently selected city folder name
 
+/* ── Chart globals ──────────────────────────────────────────────────────────── */
+let chartTrend = null;
+let chartTop10 = null;
+let chartCombo = null;
+const MIN_SAMPLE_JS  = 5;
+const CHART_FONT     = { family: 'Inter, system-ui, sans-serif' };
+const CHART_GRID     = 'rgba(255,255,255,0.06)';
+const TOOLTIP_STYLE  = {
+  backgroundColor: 'rgba(8,12,20,0.95)',
+  borderWidth: 1,
+  titleFont:  { ...CHART_FONT, weight: '600' },
+  bodyFont:   CHART_FONT,
+  padding: 10,
+};
+
 /* ── Summary table ──────────────────────────────────────────────────────── */
 
 function buildSummaryColumns(sample) {
@@ -716,8 +802,8 @@ function buildSummaryColumns(sample) {
     },
     { title: 'Quarter 季度',         data: 'Quarter' },
     {
-      title: 'Avg Price/Ping<br><small>萬/坪</small>',
-      data:  'AvgPricePerPing',
+      title: 'Median Price/Ping<br><small>萬/嵪 (中位數)</small>',
+      data:  'MedianPricePerPing',
       render: d => fmt(d),
     },
     {
@@ -762,6 +848,9 @@ async function loadSummary(cityCode) {
 
   // Update section title
   $('#summary-title').text(`${city.name} — District Trend Summary`);
+
+  // Load charts (non-blocking)
+  updateCharts(cityCode);
 
   const wrap = $('#city-tab-content');
   wrap.html(`<div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading ${city.name}…</div>`);
@@ -868,7 +957,302 @@ async function loadDetail(cityFolder, districtEncoded) {
     language:  { search: '🔍', searchPlaceholder: 'Search…', lengthMenu: 'Show _MENU_' },
   });
 }
+/* ── Chart functions ───────────────────────────────────────────────────── */
 
+function destroyCharts() {
+  [chartTrend, chartTop10, chartCombo].forEach(c => { if (c) c.destroy(); });
+  chartTrend = chartTop10 = chartCombo = null;
+}
+
+async function updateCharts(cityCode) {
+  const city = manifest.cities[cityCode];
+  destroyCharts();
+  $('#charts-row1, #charts-row2, #charts-no-data').hide();
+
+  let ts;
+  try {
+    const r = await fetch(`data/${city.folder}/timeseries.json`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    ts = await r.json();
+  } catch (e) {
+    $('#charts-no-data').show();
+    return;
+  }
+
+  if (!ts.quarters || ts.quarters.length < 2) {
+    $('#charts-no-data').show();
+    return;
+  }
+
+  $('#charts-row1, #charts-row2').show();
+  $('#trend-chart-title').text(`${city.name} — Price Trend 價格走勢`);
+
+  renderTrendChart(ts);
+  renderComboChart(ts);
+
+  // Load summary.csv for Top-10 chart
+  try {
+    const rows = await loadCSV(`data/${city.folder}/summary.csv`);
+    renderTop10Chart(rows);
+  } catch (e) {
+    // Top-10 silently hidden if summary unavailable
+  }
+}
+
+function _chartScales(yLabel = '') {
+  return {
+    x: {
+      ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 }, maxRotation: 45 },
+      grid:  { color: CHART_GRID },
+      border: { color: 'rgba(255,255,255,0.1)' },
+    },
+    y: {
+      ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
+               callback: v => v.toFixed(0) + (yLabel ? ' ' + yLabel : '') },
+      grid:  { color: CHART_GRID },
+      border: { color: 'rgba(255,255,255,0.1)' },
+    },
+  };
+}
+
+function renderTrendChart(ts) {
+  const ctx = document.getElementById('chart-trend').getContext('2d');
+  chartTrend = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ts.quarters,
+      datasets: [{
+        label: 'Median 萬/嵪 (city-wide)',
+        data:  ts.city_median,
+        borderColor: '#00f5c4',
+        backgroundColor: 'rgba(0,245,196,0.07)',
+        borderWidth: 2.5,
+        pointBackgroundColor: '#00f5c4',
+        pointBorderColor: '#00f5c4',
+        pointRadius: 4,
+        pointHoverRadius: 7,
+        pointShadowBlur: 10,
+        tension: 0.35,
+        fill: true,
+        spanGaps: true,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: {
+        legend: { labels: { color: '#e8eaf2', font: CHART_FONT, boxWidth: 14 } },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          borderColor: '#00f5c4',
+          titleColor:  '#00f5c4',
+          bodyColor:   '#e8eaf2',
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              return v != null ? ` Median: ${v.toFixed(2)} 萬/嵪` : ' No data';
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 }, maxRotation: 45 },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+        y: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
+                   callback: v => v.toFixed(0) + '萬' },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+      },
+    },
+  });
+}
+
+/** Overlay a single district's trend on the existing trend chart. */
+function overlayDistrictTrend(districtName, ts) {
+  if (!chartTrend || !ts.districts[districtName]) return;
+  // Remove any previous overlay
+  chartTrend.data.datasets = chartTrend.data.datasets.slice(0, 1);
+  chartTrend.data.datasets.push({
+    label: districtName,
+    data:  ts.districts[districtName],
+    borderColor: '#ff2d55',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderDash: [4, 3],
+    pointBackgroundColor: '#ff2d55',
+    pointRadius: 3,
+    tension: 0.35,
+    spanGaps: true,
+  });
+  chartTrend.update();
+}
+
+function renderTop10Chart(rows) {
+  // Find most recent quarter per district
+  const latest = {};
+  rows.forEach(r => {
+    const d = r.District;
+    if (!latest[d] || r.Quarter > latest[d].Quarter) latest[d] = r;
+  });
+
+  const top10 = Object.values(latest)
+    .filter(r => {
+      const yoy = parseFloat(r.YoY_pct);
+      const cnt = parseInt(r.TransactionCount, 10);
+      return !isNaN(yoy) && cnt >= MIN_SAMPLE_JS;
+    })
+    .sort((a, b) => parseFloat(b.YoY_pct) - parseFloat(a.YoY_pct))
+    .slice(0, 10);
+
+  const ctx = document.getElementById('chart-top10').getContext('2d');
+
+  if (top10.length === 0) {
+    // Draw placeholder text
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = '#5a6480';
+    ctx.font = '13px Inter, system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('Insufficient YoY data — run backfill for full history',
+                 ctx.canvas.width / 2, ctx.canvas.height / 2);
+    return;
+  }
+
+  const values = top10.map(r => parseFloat(r.YoY_pct));
+  const labels = top10.map(r => r.District);
+  const bgColors     = values.map(v => v >= 0 ? 'rgba(255,45,85,0.55)'  : 'rgba(0,245,196,0.45)');
+  const borderColors = values.map(v => v >= 0 ? '#ff2d55' : '#00f5c4');
+
+  chartTop10 = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'YoY %',
+        data: values,
+        backgroundColor: bgColors,
+        borderColor: borderColors,
+        borderWidth: 1,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          borderColor: '#ff2d55',
+          titleColor:  '#e8eaf2',
+          bodyColor:   '#ff6b85',
+          callbacks: {
+            label: ctx => ` YoY: ${ctx.parsed.x >= 0 ? '+' : ''}${ctx.parsed.x.toFixed(2)}%`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
+                   callback: v => v + '%' },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+        y: {
+          ticks: { color: '#e8eaf2', font: { ...CHART_FONT, size: 11 } },
+          grid:  { color: 'rgba(255,255,255,0.03)' },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+      },
+    },
+  });
+}
+
+function renderComboChart(ts) {
+  const ctx = document.getElementById('chart-combo').getContext('2d');
+  chartCombo = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ts.quarters,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Transaction Count 成交量',
+          data:  ts.city_volume,
+          backgroundColor: 'rgba(77,159,255,0.22)',
+          borderColor:     'rgba(77,159,255,0.55)',
+          borderWidth: 1,
+          borderRadius: 3,
+          yAxisID: 'yVol',
+          order: 2,
+        },
+        {
+          type: 'line',
+          label: 'Median Price 萬/嵪',
+          data:  ts.city_median,
+          borderColor:      '#00f5c4',
+          backgroundColor:  'transparent',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#00f5c4',
+          pointRadius: 3,
+          pointHoverRadius: 6,
+          tension: 0.35,
+          yAxisID: 'yPrice',
+          order: 1,
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#e8eaf2', font: CHART_FONT, boxWidth: 14 } },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          borderColor: '#4d9fff',
+          titleColor:  '#4d9fff',
+          bodyColor:   '#e8eaf2',
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 }, maxRotation: 45 },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+        yPrice: {
+          type: 'linear',
+          position: 'left',
+          ticks: { color: '#00f5c4', font: { ...CHART_FONT, size: 10 },
+                   callback: v => v.toFixed(0) + '萬' },
+          grid:  { color: CHART_GRID },
+          border: { color: '#00f5c4' },
+          title: { display: true, text: '萬/嵪', color: '#00f5c4',
+                   font: { ...CHART_FONT, size: 10 } },
+        },
+        yVol: {
+          type: 'linear',
+          position: 'right',
+          ticks: { color: '#4d9fff', font: { ...CHART_FONT, size: 10 } },
+          grid:  { drawOnChartArea: false },
+          border: { color: '#4d9fff' },
+          title: { display: true, text: '件數', color: '#4d9fff',
+                   font: { ...CHART_FONT, size: 10 } },
+        },
+      },
+    },
+  });
+}
 /* ── Sidebar nav setup ───────────────────────────────────────────────────── */
 
 const CITY_ORDER = ['A', 'F', 'H', 'B', 'D', 'E'];
@@ -895,10 +1279,19 @@ $(document).on('click', '.city-btn', function () {
   loadSummary(code);
 });
 
-// Drill into district detail when a district link is clicked
+// Drill into district detail when a district link is clicked — also overlay chart
 $(document).on('click', '.district-link', function () {
   const district = $(this).data('district');
-  if (activeCity) loadDetail(activeCity, district);
+  if (!activeCity) return;
+  loadDetail(activeCity, district);
+  // Overlay this district on the trend chart if timeseries is available
+  const city = Object.values(manifest.cities).find(c => c.folder === activeCity);
+  if (city) {
+    fetch(`data/${city.folder}/timeseries.json`)
+      .then(r => r.ok ? r.json() : null)
+      .then(ts => { if (ts) overlayDistrictTrend(decodeURIComponent(district), ts); })
+      .catch(() => {});
+  }
 });
 
 // Back to summary
