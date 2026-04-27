@@ -207,6 +207,19 @@
     #sidebar-footer a { color: var(--text-muted); text-decoration: none; }
     #sidebar-footer a:hover { color: var(--neon-cyan); }
 
+    #page-footer {
+      margin-top: 1.25rem;
+      padding: 1rem 1.15rem;
+      border-top: 1px solid rgba(255,255,255,.06);
+      color: var(--text-muted);
+      font-size: .68rem;
+      line-height: 1.7;
+    }
+    #page-footer strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
     /* ── Main content ──────────────────────────────────────────────────────── */
     #main {
       flex: 1;
@@ -236,6 +249,156 @@
       color: var(--text-primary);
     }
     #topbar-title span { color: var(--neon-cyan); }
+
+    #search-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 360px;
+      margin: 0 1rem;
+    }
+    #geo-search {
+      width: 100%;
+      padding: .55rem .85rem;
+      border-radius: 999px;
+      border: 1px solid rgba(0,245,196,.22);
+      background: rgba(255,255,255,.04);
+      color: var(--text-primary);
+      outline: none;
+      font: inherit;
+    }
+    #geo-search::placeholder { color: var(--text-muted); }
+    #geo-search:focus {
+      border-color: rgba(0,245,196,.55);
+      box-shadow: 0 0 0 3px rgba(0,245,196,.08);
+    }
+    #search-results {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + .45rem);
+      background: rgba(8,12,20,.96);
+      border: 1px solid rgba(0,245,196,.2);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 18px 45px rgba(0,0,0,.35);
+      display: none;
+      z-index: 150;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .search-item {
+      display: flex;
+      justify-content: space-between;
+      gap: .75rem;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--text-primary);
+      padding: .75rem .9rem;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .search-item:hover {
+      background: rgba(0,245,196,.07);
+    }
+    .search-item .kind {
+      color: var(--neon-cyan);
+      font-size: .65rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr .9fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .panel-stack {
+      display: grid;
+      gap: 1.25rem;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: .75rem;
+      margin-bottom: 1.25rem;
+    }
+    .metric-card {
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: .8rem .85rem;
+      min-height: 78px;
+    }
+    .metric-card .metric-label {
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: var(--text-muted);
+      margin-bottom: .35rem;
+    }
+    .metric-card .metric-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+    .metric-card .metric-note {
+      font-size: .68rem;
+      color: var(--text-muted);
+      margin-top: .3rem;
+      line-height: 1.4;
+    }
+
+    .panel-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: .85rem;
+    }
+    .panel-title-row .eyebrow {
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: var(--neon-cyan);
+    }
+    .panel-title-row .hint {
+      font-size: .72rem;
+      color: var(--text-muted);
+    }
+
+    .chart-box {
+      position: relative;
+      height: 280px;
+    }
+    .chart-box.tall { height: 320px; }
+
+    .insight-list {
+      display: grid;
+      gap: .65rem;
+    }
+    .insight-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .65rem .8rem;
+      border-radius: 10px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.05);
+    }
+    .insight-row .label {
+      color: var(--text-primary);
+      font-size: .84rem;
+    }
+    .insight-row .value {
+      color: var(--neon-cyan);
+      font-weight: 700;
+      white-space: nowrap;
+    }
 
     #topbar-legend {
       display: flex;
@@ -596,13 +759,15 @@
 
       #topbar-legend { display: none; }
       #topbar { padding: 0 1rem; }
+      #search-wrap { max-width: none; margin: 0 .75rem; }
 
       #content { padding: .9rem; }
 
       .glass-card { padding: .9rem; }
 
-      .charts-grid { grid-template-columns: 1fr; }
-      .chart-wrap  { height: 220px; }
+      .panel-grid { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .chart-box, .chart-box.tall, .chart-wrap  { height: 220px; }
     }
   </style>
 </head>
@@ -640,6 +805,10 @@
       <div id="topbar-title">
         🏙 Taiwan Real Estate &nbsp;<span>六都趨勢雷達</span>
       </div>
+      <div id="search-wrap">
+        <input id="geo-search" type="search" placeholder="Search city or district..." autocomplete="off" />
+        <div id="search-results"></div>
+      </div>
       <div id="topbar-legend">
         <div class="legend-item rise">
           <span class="legend-dot rise"></span> Price ↑ QoQ/YoY
@@ -653,32 +822,56 @@
     <!-- Content -->
     <div id="content">
 
-      <!-- Charts row 1: trend + top-10 -->
-      <div class="charts-grid" id="charts-row1" style="display:none">
-        <div class="glass-card chart-card">
-          <div class="section-header">
-            <div class="section-title" id="trend-chart-title">Price Trend 價格走勢</div>
-            <div class="section-hint">City-wide median · click district row to overlay</div>
-          </div>
-          <div class="chart-wrap"><canvas id="chart-trend"></canvas></div>
-        </div>
-        <div class="glass-card chart-card">
-          <div class="section-header">
-            <div class="section-title">Top 10 YoY 年增率排行</div>
-            <div class="section-hint">Districts with sufficient data (N≥5)</div>
-          </div>
-          <div class="chart-wrap"><canvas id="chart-top10"></canvas></div>
-        </div>
+      <div class="metric-grid" id="metric-grid">
+        <div class="metric-card"><div class="metric-label">Current Area</div><div class="metric-value" id="metric-area">—</div><div class="metric-note" id="metric-area-note">Use search to jump to a city or district</div></div>
+        <div class="metric-card"><div class="metric-label">Latest Quarter</div><div class="metric-value" id="metric-quarter">—</div><div class="metric-note" id="metric-quarter-note">Median price / ping</div></div>
+        <div class="metric-card"><div class="metric-label">Median Price</div><div class="metric-value" id="metric-price">—</div><div class="metric-note" id="metric-price-note">Trimmed median, not mean</div></div>
+        <div class="metric-card"><div class="metric-label">Transactions</div><div class="metric-value" id="metric-count">—</div><div class="metric-note" id="metric-count-note">N < 5 is flagged as low confidence</div></div>
+        <div class="metric-card"><div class="metric-label">Trend Signal</div><div class="metric-value" id="metric-signal">—</div><div class="metric-note" id="metric-signal-note">QoQ / YoY reliability</div></div>
       </div>
 
-      <!-- Charts row 2: volume-price combo -->
-      <div class="charts-row2" id="charts-row2" style="display:none">
+      <div class="panel-grid">
         <div class="glass-card chart-card">
-          <div class="section-header">
-            <div class="section-title">量價關係 Volume × Price</div>
-            <div class="section-hint">Bars = transaction count · Line = median price/ping</div>
+          <div class="panel-title-row">
+            <div>
+              <div class="eyebrow">Left Panel</div>
+              <div class="section-title" id="trend-chart-title">Market Momentum</div>
+            </div>
+            <div class="hint">12-month curve with hover project names</div>
           </div>
-          <div class="chart-wrap" style="height:240px"><canvas id="chart-combo"></canvas></div>
+          <div class="chart-box tall"><canvas id="chart-trend"></canvas></div>
+        </div>
+        <div class="panel-stack">
+          <div class="glass-card chart-card">
+            <div class="panel-title-row">
+              <div>
+                <div class="eyebrow">Middle Panel</div>
+                <div class="section-title">Future Supply</div>
+              </div>
+              <div class="hint">Stacked inventory proxy</div>
+            </div>
+            <div class="chart-box"><canvas id="chart-top10"></canvas></div>
+          </div>
+          <div class="glass-card chart-card">
+            <div class="panel-title-row">
+              <div>
+                <div class="eyebrow">Deep Trends</div>
+                <div class="section-title">Signals</div>
+              </div>
+              <div class="hint">Traffic-light market health</div>
+            </div>
+            <div class="insight-list" id="insight-list"></div>
+          </div>
+        </div>
+        <div class="glass-card chart-card">
+          <div class="panel-title-row">
+            <div>
+              <div class="eyebrow">Right Panel</div>
+              <div class="section-title">Price Anchors</div>
+            </div>
+            <div class="hint">Top 10 district benchmark floor</div>
+          </div>
+          <div class="chart-box tall"><canvas id="chart-combo"></canvas></div>
         </div>
       </div>
 
@@ -687,7 +880,7 @@
         <div class="chart-no-data">
           ⚡ Charts require historical data. Run:
           <span class="cmd">python main.py --backfill</span>
-          to download 2023–2025 seasonal data, then refresh.
+          to generate deeper history, then refresh.
         </div>
       </div>
 
@@ -714,6 +907,13 @@
             <tbody></tbody>
           </table>
         </div>
+      </div>
+
+      <div id="page-footer">
+        <strong>Data Update Frequency &amp; Source Reference:</strong><br>
+        Actual Price Registration: released in batches on the 1st, 11th, and 21st of every month.<br>
+        Pre-sale Transactions: synced to the same cycle, with contracts filed within 30 days and appearing in the nearest 10-day release.<br>
+        Pre-sale Project Filings: aperiodic; updates appear when developers file and approvals are published by local governments.
       </div>
 
     </div><!-- /content -->
@@ -774,6 +974,10 @@ let activeCity = null;   // currently selected city folder name
 let chartTrend = null;
 let chartTop10 = null;
 let chartCombo = null;
+let currentTimeseries = null;
+let currentCityCode = null;
+let currentSummaryRows = [];
+let geoIndex = [];
 const MIN_SAMPLE_JS  = 5;
 const CHART_FONT     = { family: 'Inter, system-ui, sans-serif' };
 const CHART_GRID     = 'rgba(255,255,255,0.06)';
@@ -784,6 +988,107 @@ const TOOLTIP_STYLE  = {
   bodyFont:   CHART_FONT,
   padding: 10,
 };
+
+function quarterKey(q) {
+  const match = String(q || '').match(/^(\d{4})Q([1-4])$/);
+  if (!match) return 0;
+  return Number(match[1]) * 4 + Number(match[2]);
+}
+
+function latestNonNull(series) {
+  for (let i = series.length - 1; i >= 0; i -= 1) {
+    if (series[i] != null && series[i] !== '') return series[i];
+  }
+  return null;
+}
+
+function buildGeoIndex(mf) {
+  geoIndex = [];
+  CITY_ORDER.forEach((code) => {
+    const city = mf.cities[code];
+    (city.districts || []).forEach((district) => {
+      geoIndex.push({
+        type: 'district',
+        code,
+        cityName: city.name,
+        folder: city.folder,
+        label: district,
+        search: `${city.name} ${district}`.toLowerCase(),
+      });
+    });
+    geoIndex.push({
+      type: 'city',
+      code,
+      cityName: city.name,
+      folder: city.folder,
+      label: city.name,
+      search: city.name.toLowerCase(),
+    });
+  });
+}
+
+function renderSearchResults(query) {
+  const q = String(query || '').trim().toLowerCase();
+  const box = $('#search-results');
+  if (!q) {
+    box.hide().empty();
+    return;
+  }
+  const matches = geoIndex.filter((item) => item.search.includes(q)).slice(0, 8);
+  if (!matches.length) {
+    box.html('<div class="search-item"><span>No matches</span><span class="kind">Search</span></div>').show();
+    return;
+  }
+  box.html(matches.map((item) => `
+    <button class="search-item" data-code="${item.code}" data-type="${item.type}" data-label="${item.label}">
+      <span>${item.label}</span>
+      <span class="kind">${item.type === 'city' ? 'City' : 'District'}</span>
+    </button>
+  `).join('')).show();
+}
+
+function updateInsightRows(rows) {
+  const $list = $('#insight-list');
+  const latest = rows.length ? rows.reduce((acc, row) => {
+    const key = row.District;
+    if (!acc[key] || quarterKey(row.Quarter) > quarterKey(acc[key].Quarter)) acc[key] = row;
+    return acc;
+  }, {}) : {};
+
+  const first = Object.values(latest)[0] || null;
+  const qoq = first && first.QoQ_pct !== '' && first.QoQ_pct != null ? fmtPct(first.QoQ_pct) : 'Insufficient Data';
+  const yoy = first && first.YoY_pct !== '' && first.YoY_pct != null ? fmtPct(first.YoY_pct) : 'Insufficient Data';
+  const trend = first ? (parseFloat(first.QoQ_pct) > 0 ? 'Heating' : parseFloat(first.QoQ_pct) < 0 ? 'Cooling' : 'Flat') : '—';
+
+  $list.html(`
+    <div class="insight-row"><span class="label">⚖️ Premium Gap</span><span class="value">${qoq}</span></div>
+    <div class="insight-row"><span class="label">📦 Absorption Rate</span><span class="value">${yoy}</span></div>
+    <div class="insight-row"><span class="label">🔍 Value / Spec</span><span class="value">Track in Phase 2</span></div>
+    <div class="insight-row"><span class="label">🔔 Resale Pressure</span><span class="value">${trend}</span></div>
+    <div class="insight-row"><span class="label">🚀 Infrastructure</span><span class="value">Link later</span></div>
+  `);
+}
+
+function updateMetricCards(city, ts, rows) {
+  const lastQuarter = latestNonNull(ts.quarters || []);
+  const latestPrice = latestNonNull(ts.city_median || []);
+  const latestCount = latestNonNull(ts.city_volume || []);
+  const latestRow = rows.reduce((acc, row) => {
+    if (!acc || quarterKey(row.Quarter) > quarterKey(acc.Quarter)) return row;
+    return acc;
+  }, null);
+
+  $('#metric-area').text(city ? city.name : '—');
+  $('#metric-area-note').text(city ? `${city.folder} · ${rows.length} rows` : 'Use search to jump to an area');
+  $('#metric-quarter').text(lastQuarter || '—');
+  $('#metric-price').text(latestPrice != null ? `${fmt(latestPrice)} 萬` : '—');
+  $('#metric-count').text(latestCount != null ? `${fmt(latestCount, 0)} 件` : '—');
+  $('#metric-signal').text(latestRow && latestRow.QoQ_pct != null ? fmtPct(latestRow.QoQ_pct) : '—');
+  $('#metric-quarter-note').text(city ? 'City-wide median price/ping' : 'No city selected');
+  $('#metric-price-note').text(latestRow && latestRow.TransactionCount < MIN_SAMPLE_JS ? 'Low sample count' : 'Trimmed median');
+  $('#metric-count-note').text(city ? 'City-wide quarter volume' : 'No data loaded');
+  $('#metric-signal-note').text(latestRow && latestRow.TransactionCount < MIN_SAMPLE_JS ? 'Insufficient Data' : 'QoQ reliability');
+}
 
 /* ── Summary table ──────────────────────────────────────────────────────── */
 
@@ -841,6 +1146,7 @@ function buildSummaryColumns(sample) {
 async function loadSummary(cityCode) {
   const city = manifest.cities[cityCode];
   activeCity = city.folder;
+  currentCityCode = cityCode;
 
   // Update sidebar active state
   $('.city-btn').removeClass('active');
@@ -849,8 +1155,8 @@ async function loadSummary(cityCode) {
   // Update section title
   $('#summary-title').text(`${city.name} — District Trend Summary`);
 
-  // Load charts (non-blocking)
-  updateCharts(cityCode);
+  // Load charts before updating detail overlays / metrics
+  await updateCharts(cityCode);
 
   const wrap = $('#city-tab-content');
   wrap.html(`<div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading ${city.name}…</div>`);
@@ -874,6 +1180,8 @@ async function loadSummary(cityCode) {
     return;
   }
 
+  currentSummaryRows = rows;
+
   const tableId = `tbl-${city.folder}`;
   wrap.html(`
     <table id="${tableId}" style="width:100%"></table>
@@ -892,6 +1200,8 @@ async function loadSummary(cityCode) {
     dom: '<"dt-controls"lf>rtp',
     language: { search: '🔍', searchPlaceholder: 'Search district…', lengthMenu: 'Show _MENU_' },
   });
+
+  updateMetricCards(city, currentTimeseries || {}, rows);
 }
 
 /* ── Detail drill-down ───────────────────────────────────────────────────── */
@@ -967,7 +1277,7 @@ function destroyCharts() {
 async function updateCharts(cityCode) {
   const city = manifest.cities[cityCode];
   destroyCharts();
-  $('#charts-row1, #charts-row2, #charts-no-data').hide();
+  $('#charts-no-data').hide();
 
   let ts;
   try {
@@ -984,7 +1294,8 @@ async function updateCharts(cityCode) {
     return;
   }
 
-  $('#charts-row1, #charts-row2').show();
+  currentTimeseries = ts;
+
   $('#trend-chart-title').text(`${city.name} — Price Trend 價格走勢`);
 
   renderTrendChart(ts);
@@ -994,6 +1305,9 @@ async function updateCharts(cityCode) {
   try {
     const rows = await loadCSV(`data/${city.folder}/summary.csv`);
     renderTop10Chart(rows);
+    if (currentSummaryRows.length) {
+      updateMetricCards(city, ts, currentSummaryRows);
+    }
   } catch (e) {
     // Top-10 silently hidden if summary unavailable
   }
@@ -1270,6 +1584,19 @@ function buildSidebar(mf) {
   });
 }
 
+async function selectLocation(code, type, label) {
+  const city = manifest.cities[code];
+  if (!city) return;
+  await loadSummary(code);
+  if (type === 'district') {
+    $('#search-results').hide();
+    $('#geo-search').val(`${city.name} ${label}`);
+    const encoded = encodeURIComponent(label);
+    loadDetail(city.folder, encoded);
+    if (currentTimeseries) overlayDistrictTrend(label, currentTimeseries);
+  }
+}
+
 /* ── Event delegation ────────────────────────────────────────────────────── */
 
 // City nav button click
@@ -1277,6 +1604,25 @@ $(document).on('click', '.city-btn', function () {
   const code = $(this).data('city-code');
   $('#detail-table-wrap').hide();
   loadSummary(code);
+});
+
+// Search interactions
+$('#geo-search').on('input', function () {
+  renderSearchResults($(this).val());
+});
+$('#geo-search').on('focus', function () {
+  renderSearchResults($(this).val());
+});
+$(document).on('click', '.search-item', function () {
+  const code = $(this).data('code');
+  const type = $(this).data('type');
+  const label = $(this).data('label');
+  selectLocation(code, type, label);
+});
+$(document).on('click', 'body', function (evt) {
+  if (!$(evt.target).closest('#search-wrap').length) {
+    $('#search-results').hide();
+  }
 });
 
 // Drill into district detail when a district link is clicked — also overlay chart
@@ -1327,6 +1673,7 @@ $(async function () {
   );
 
   buildSidebar(mf);
+  buildGeoIndex(mf);
 
   // Auto-load first city
   loadSummary(CITY_ORDER[0]);
