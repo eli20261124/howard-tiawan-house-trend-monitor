@@ -2,9 +2,8 @@ name: Update Real Estate Data
 
 on:
   schedule:
-    # 02:00 Taipei time (UTC+8) on the 2nd, 12th, and 22nd of every month
-    # → 18:00 UTC on the 1st, 11th, and 21st
-    - cron: "0 18 1,11,21 * *"
+    # Daily at 04:00 UTC = 12:00 Taiwan Time (UTC+8)
+    - cron: "0 4 * * *"
   workflow_dispatch:  # allow manual trigger from the Actions UI
 
 permissions:
@@ -13,7 +12,7 @@ permissions:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20  # daily incremental run is fast; backfill has its own workflow
 
     steps:
       - name: Checkout repository
@@ -34,15 +33,41 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Change detection — check MOI ETag
+        id: etag_check
+        run: |
+          # Probe the Taipei city (_a.csv) endpoint for a change signal.
+          # If ETag / Last-Modified matches cached value, skip the pipeline run.
+          NEW_ETAG=$(curl -sI --max-time 10 \
+            "https://plvr.land.moi.gov.tw/Download?fileName=a_lvr_land_a.csv" \
+            | grep -i "^etag\|^last-modified" | tr -d '\r' | sort | sha256sum | cut -c1-16)
+          CACHED=$(cat data/.etag_cache 2>/dev/null || echo "none")
+          echo "new=${NEW_ETAG}" >> "$GITHUB_OUTPUT"
+          echo "cached=${CACHED}"  >> "$GITHUB_OUTPUT"
+          if [ "$NEW_ETAG" = "$CACHED" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No MOI data change detected — skipping pipeline."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "MOI data changed — running pipeline."
+          fi
+
       - name: Install dependencies
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: pip install -r requirements.txt
 
       - name: Run pipeline
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: python main.py
         env:
-          PYTHONUNBUFFERED: "1"  # stream logs in real time
+          PYTHONUNBUFFERED: "1"
+
+      - name: Update ETag cache
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: echo "${{ steps.etag_check.outputs.new }}" > data/.etag_cache
 
       - name: Commit updated data
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

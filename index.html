@@ -410,6 +410,70 @@
     .metric-card .metric-value.tl-yellow { color: #ffd166; }
     .metric-card .metric-value.tl-green  { color: var(--neon-cyan); }
 
+    /* ── Gauge rows ─────────────────────────────────────────────────────────── */
+    .gauge-row {
+      flex-direction: column;
+      align-items: stretch;
+      padding: .55rem .8rem .4rem;
+    }
+    .gauge-row .label { margin-bottom: .3rem; }
+    .gauge-row .gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .gauge-row canvas {
+      display: block;
+    }
+    .gauge-val {
+      font-size: .95rem;
+      font-weight: 700;
+      margin-top: -.4rem;
+      letter-spacing: .02em;
+    }
+    .gauge-val.tl-red    { color: var(--neon-red); }
+    .gauge-val.tl-yellow { color: #ffd166; }
+    .gauge-val.tl-green  { color: var(--neon-cyan); }
+    .gauge-val.tl-dim    { color: var(--text-muted); }
+    .gauge-sub {
+      font-size: .65rem;
+      color: var(--text-muted);
+      margin-top: .1rem;
+    }
+
+    /* ── Market Verdict Banner ──────────────────────────────────────────────── */
+    #market-alert {
+      margin-bottom: .85rem;
+      padding: .65rem 1.1rem;
+      border-radius: 10px;
+      font-size: .82rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+      border: 1px solid;
+      animation: pulse-border 2s ease-in-out infinite;
+    }
+    #market-alert.verdict-red {
+      background: rgba(255,45,85,.1);
+      border-color: rgba(255,45,85,.55);
+      color: #ff6b85;
+    }
+    #market-alert.verdict-yellow {
+      background: rgba(255,209,102,.08);
+      border-color: rgba(255,209,102,.45);
+      color: #ffd166;
+    }
+    #market-alert.verdict-green {
+      background: rgba(0,245,196,.07);
+      border-color: rgba(0,245,196,.35);
+      color: var(--neon-cyan);
+    }
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: none; }
+      50% { box-shadow: 0 0 14px rgba(255,45,85,.22); }
+    }
+    #market-alert.verdict-green { animation: none; }
+
     #topbar-legend {
       display: flex;
       gap: 1.2rem;
@@ -832,6 +896,9 @@
     <!-- Content -->
     <div id="content">
 
+      <!-- Market Health Verdict Banner -->
+      <div id="market-alert" style="display:none" role="alert"></div>
+
       <div class="metric-grid" id="metric-grid">
         <div class="metric-card"><div class="metric-label">Current Area</div><div class="metric-value" id="metric-area">—</div><div class="metric-note" id="metric-area-note">Use search to jump to a city or district</div></div>
         <div class="metric-card"><div class="metric-label">Latest Quarter</div><div class="metric-value" id="metric-quarter">—</div><div class="metric-note" id="metric-quarter-note">Median price / ping</div></div>
@@ -923,7 +990,8 @@
         <strong>Data Update Frequency &amp; Source Reference:</strong><br>
         Actual Price Registration: released in batches on the 1st, 11th, and 21st of every month.<br>
         Pre-sale Transactions: synced to the same cycle, with contracts filed within 30 days and appearing in the nearest 10-day release.<br>
-        Pre-sale Project Filings: aperiodic; updates appear when developers file and approvals are published by local governments.
+        Pre-sale Project Filings: aperiodic; updates appear when developers file and approvals are published by local governments.<br>
+        <span id="footer-last-sync" style="color:var(--neon-cyan)"></span>
       </div>
 
     </div><!-- /content -->
@@ -1058,6 +1126,52 @@ function renderSearchResults(query) {
   `).join('')).show();
 }
 
+/* ── Gauge helper ─────────────────────────────────────────────────────────── */
+
+/**
+ * Render (or update) a semicircular half-doughnut gauge using Chart.js.
+ * @param {string} id       - canvas element id
+ * @param {number} value    - current value
+ * @param {number} max      - scale maximum
+ * @param {string} colorCls - 'tl-red' | 'tl-yellow' | 'tl-green' | 'tl-dim'
+ */
+function renderGauge(id, value, max, colorCls) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return null;
+  const fill  = Math.min(Math.max(value, 0), max);
+  const empty = max - fill;
+  const colMap = {
+    'tl-red':    '#ff2d55',
+    'tl-yellow': '#ffd166',
+    'tl-green':  '#00f5c4',
+    'tl-dim':    '#5a6480',
+  };
+  const col = colMap[colorCls] || colMap['tl-dim'];
+
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  return new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [fill, empty],
+        backgroundColor: [col, 'rgba(255,255,255,0.06)'],
+        borderWidth: 0,
+        hoverOffset: 0,
+      }],
+    },
+    options: {
+      cutout: '72%',
+      rotation: -Math.PI / 2,
+      circumference: Math.PI,
+      responsive: false,
+      animation: { duration: 500 },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
+  });
+}
+
 function tlClass(yoy) {
   if (isNaN(yoy)) return 'tl-dim';
   if (Math.abs(yoy) > 15) return 'tl-red';
@@ -1069,7 +1183,7 @@ function updateInsightRows(rows, pts) {
   const $list = $('#insight-list');
   if (!rows.length) { $list.html(''); return; }
 
-  // Find most-recent quarter per district
+  // Latest-quarter per district
   const latest = rows.reduce((acc, row) => {
     const key = row.District;
     if (!acc[key] || quarterKey(row.Quarter) > quarterKey(acc[key].Quarter)) acc[key] = row;
@@ -1080,7 +1194,6 @@ function updateInsightRows(rows, pts) {
     parseInt(r.TransactionCount, 10) >= MIN_SAMPLE_JS
   );
 
-  // Hottest district by YoY
   const byYoY = latestRows
     .filter(r => r.YoY_pct !== '' && r.YoY_pct != null && !isNaN(parseFloat(r.YoY_pct)))
     .sort((a, b) => parseFloat(b.YoY_pct) - parseFloat(a.YoY_pct));
@@ -1097,15 +1210,14 @@ function updateInsightRows(rows, pts) {
 
   const hotLabel  = hotRow  ? hotRow.District  : '—';
   const coolLabel = coolRow ? coolRow.District : '—';
-  const hotVal    = isNaN(hotYoY)  ? '— ' : (hotYoY  > 0 ? '+' : '') + hotYoY.toFixed(1)  + '%';
-  const coolVal   = isNaN(coolYoY) ? '— ' : (coolYoY > 0 ? '+' : '') + coolYoY.toFixed(1) + '%';
+  const hotVal    = isNaN(hotYoY)  ? '—' : (hotYoY  > 0 ? '+' : '') + hotYoY.toFixed(1)  + '%';
+  const coolVal   = isNaN(coolYoY) ? '—' : (coolYoY > 0 ? '+' : '') + coolYoY.toFixed(1) + '%';
   const momentum  = risingCount > fallingCount ? '↑ Heating' : risingCount < fallingCount ? '↓ Cooling' : '→ Flat';
   const momentumClass = risingCount > fallingCount ? 'tl-red' : risingCount < fallingCount ? 'tl-green' : 'tl-dim';
 
-  // Premium Gap: presale city_median vs actual city_median in latest shared quarter
-  let premiumHtml = `<span class="value tl-dim">No presale data</span>`;
-  // Absorption Rate: presale volume / actual volume
-  let absorptionHtml = `<span class="value tl-dim">No presale data</span>`;
+  // ── Compute gauge values ─────────────────────────────────────────────────
+  let gapValue = null, gapCls = 'tl-dim', gapTxt = '—', gapSub = 'No presale data';
+  let absValue = null, absCls = 'tl-dim', absTxt = '—', absSub = 'No presale data';
 
   if (pts && pts.city_median && pts.quarters && currentTimeseries) {
     const actQ  = latestNonNull(currentTimeseries.quarters);
@@ -1113,31 +1225,43 @@ function updateInsightRows(rows, pts) {
     const acIdx = currentTimeseries.quarters.lastIndexOf(actQ);
     const presalePrice = ptIdx >= 0 ? pts.city_median[ptIdx] : latestNonNull(pts.city_median);
     const actualPrice  = acIdx >= 0 ? currentTimeseries.city_median[acIdx] : latestNonNull(currentTimeseries.city_median);
+
     if (presalePrice != null && actualPrice != null && actualPrice > 0) {
       const gap = (presalePrice - actualPrice) / actualPrice * 100;
-      const gapTxt = (gap >= 0 ? '+' : '') + gap.toFixed(1) + '%';
-      const gapCls = gap > 20 ? 'tl-red' : gap > 5 ? 'tl-yellow' : 'tl-green';
-      premiumHtml = `<span class="value ${gapCls}">${gapTxt} <small style="font-weight:400;font-size:.75em">(${presalePrice.toFixed(0)} vs ${actualPrice.toFixed(0)} 萬)</small></span>`;
+      gapValue = gap;
+      gapTxt = (gap >= 0 ? '+' : '') + gap.toFixed(1) + '%';
+      gapCls  = gap > 20 ? 'tl-red' : gap > 5 ? 'tl-yellow' : 'tl-green';
+      gapSub  = `${presalePrice.toFixed(0)} vs ${actualPrice.toFixed(0)} 萬`;
     }
-    // Absorption Rate
+
     const presaleVol = ptIdx >= 0 ? pts.city_volume[ptIdx] : latestNonNull(pts.city_volume);
     const actualVol  = acIdx >= 0 ? currentTimeseries.city_volume[acIdx] : latestNonNull(currentTimeseries.city_volume);
     if (presaleVol != null && actualVol != null && actualVol > 0) {
-      const ratio = (presaleVol / actualVol * 100);
-      const ratioTxt = ratio.toFixed(0) + '%';
-      const ratioCls = ratio > 80 ? 'tl-red' : ratio > 40 ? 'tl-yellow' : 'tl-green';
-      absorptionHtml = `<span class="value ${ratioCls}">${ratioTxt} <small style="font-weight:400;font-size:.75em">(${presaleVol} vs ${actualVol} 件)</small></span>`;
+      const ratio = presaleVol / actualVol * 100;
+      absValue = ratio;
+      absTxt   = ratio.toFixed(0) + '%';
+      absCls   = ratio > 80 ? 'tl-red' : ratio > 40 ? 'tl-yellow' : 'tl-green';
+      absSub   = `${presaleVol} vs ${actualVol} 件`;
     }
   }
 
+  // ── Render HTML (gauges use fixed-size canvases, drawn after DOM insert) ─
   $list.html(`
-    <div class="insight-row">
-      <span class="label">⚖️ Pre-sale Premium Gap</span>
-      ${premiumHtml}
+    <div class="insight-row gauge-row" id="row-premium">
+      <span class="label">⚖️ Pre-sale Premium Gap <small style="font-size:.65rem;color:var(--text-muted)">(0–50% scale)</small></span>
+      <div class="gauge-wrap">
+        <canvas id="gauge-premium" width="110" height="60"></canvas>
+        <div class="gauge-val ${gapCls}">${gapTxt}</div>
+        <div class="gauge-sub">${gapSub}</div>
+      </div>
     </div>
-    <div class="insight-row">
-      <span class="label">📦 Absorption Rate</span>
-      ${absorptionHtml}
+    <div class="insight-row gauge-row" id="row-absorption">
+      <span class="label">📦 Absorption Rate <small style="font-size:.65rem;color:var(--text-muted)">(0–100% scale)</small></span>
+      <div class="gauge-wrap">
+        <canvas id="gauge-absorption" width="110" height="60"></canvas>
+        <div class="gauge-val ${absCls}">${absTxt}</div>
+        <div class="gauge-sub">${absSub}</div>
+      </div>
     </div>
     <div class="insight-row">
       <span class="label">🔥 Hottest District</span>
@@ -1149,13 +1273,89 @@ function updateInsightRows(rows, pts) {
     </div>
     <div class="insight-row">
       <span class="label">📈 City Momentum</span>
-      <span class="value ${momentumClass}">${momentum} &nbsp; <small style="font-weight:400">${risingCount}↑ ${fallingCount}↓</small></span>
+      <span class="value ${momentumClass}">${momentum} &nbsp;<small style="font-weight:400">${risingCount}↑ ${fallingCount}↓</small></span>
     </div>
     <div class="insight-row">
       <span class="label">⚠️ Low-confidence Districts</span>
       <span class="value ${lowN > 0 ? 'tl-yellow' : 'tl-green'}">${lowN} (N&lt;${MIN_SAMPLE_JS})</span>
     </div>
   `);
+
+  // ── Draw gauges after DOM is ready ───────────────────────────────────────
+  renderGauge('gauge-premium',    gapValue != null ? Math.min(gapValue, 50) : 0, 50,  gapCls);
+  renderGauge('gauge-absorption', absValue != null ? Math.min(absValue, 100) : 0, 100, absCls);
+
+  // ── Market Health Verdict ────────────────────────────────────────────────
+  let redCount = 0;
+  if (gapValue  != null && gapValue  > 20) redCount++;
+  if (absValue  != null && absValue  > 80) redCount++;
+  if (risingCount > fallingCount)          redCount++;
+  if (!isNaN(hotYoY) && hotYoY > 15)      redCount++;
+  if (lowN > 0)                            redCount++;
+
+  const $alert = $('#market-alert');
+  $alert.removeClass('verdict-red verdict-yellow verdict-green');
+  if (redCount >= 3) {
+    $alert.addClass('verdict-red')
+      .html(`⚠️ Market Overheated — ${redCount}/5 risk signals active. Premium Gap, Absorption & Momentum all elevated.`)
+      .show();
+  } else if (redCount >= 2) {
+    $alert.addClass('verdict-yellow')
+      .html(`⚡ Market Watch — ${redCount}/5 signals in caution zone. Monitor closely.`)
+      .show();
+  } else {
+    $alert.addClass('verdict-green')
+      .html(`✅ Market Stable — ${redCount}/5 risk signals active.`)
+      .show();
+  }
+
+  // ── Phase B: Linked hover — Premium Gap gauge → trend chart gap-fill ─────
+  const $rowPremium = $('#row-premium');
+  $rowPremium.css('cursor', 'pointer')
+    .on('mouseenter', () => {
+      if (!chartTrend) return;
+      const ds = chartTrend.data.datasets;
+      // dataset[0] = actual (fill true), dataset[1] = presale (if exists)
+      if (ds.length >= 2) {
+        ds[1].backgroundColor = 'rgba(162,89,255,0.22)';
+        ds[1].fill = { target: 0, above: 'rgba(162,89,255,0.18)', below: 'rgba(0,245,196,0.12)' };
+        chartTrend.update('none');
+      }
+    })
+    .on('mouseleave', () => {
+      if (!chartTrend) return;
+      const ds = chartTrend.data.datasets;
+      if (ds.length >= 2) {
+        ds[1].backgroundColor = 'transparent';
+        ds[1].fill = false;
+        chartTrend.update('none');
+      }
+    });
+
+  // ── Phase B: Linked hover — Absorption Rate gauge → combo chart highlight ─
+  const $rowAbsorption = $('#row-absorption');
+  $rowAbsorption.css('cursor', 'pointer')
+    .on('mouseenter', () => {
+      if (!chartCombo) return;
+      const ds = chartCombo.data.datasets;
+      // dataset[0] = actual volume (blue bars), dataset[2] = presale volume (purple bars)
+      if (ds.length >= 3) {
+        ds[2].backgroundColor = 'rgba(162,89,255,0.55)';
+        ds[2].borderColor     = 'rgba(162,89,255,0.95)';
+        ds[2].borderWidth     = 2;
+        chartCombo.update('none');
+      }
+    })
+    .on('mouseleave', () => {
+      if (!chartCombo) return;
+      const ds = chartCombo.data.datasets;
+      if (ds.length >= 3) {
+        ds[2].backgroundColor = 'rgba(162,89,255,0.28)';
+        ds[2].borderColor     = 'rgba(162,89,255,0.65)';
+        ds[2].borderWidth     = 1;
+        chartCombo.update('none');
+      }
+    });
 }
 
 function updateMetricCards(city, ts, rows, pts) {
@@ -1903,6 +2103,15 @@ $(async function () {
   $('#data-period').text(
     ts.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   );
+
+  // Load last_updated.json for footer timestamp
+  try {
+    const luResp = await fetch('data/last_updated.json');
+    if (luResp.ok) {
+      const lu = await luResp.json();
+      $('#footer-last-sync').text('🕐 Last pipeline sync: ' + (lu.updated_taipei || lu.updated_utc));
+    }
+  } catch (_) { /* graceful */ }
 
   buildSidebar(mf);
   buildGeoIndex(mf);

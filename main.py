@@ -15,7 +15,7 @@ import math
 import re
 import sys
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -730,6 +730,18 @@ def run(local_dir: Optional[Path] = None) -> None:
             log.warning("  Presale skipped for %s: %s", code, exc)
 
     export_manifest(city_districts)
+
+    # Write last_updated.json for dashboard footer
+    now_utc = datetime.now(timezone.utc)
+    taipei_offset = timedelta(hours=8)
+    now_taipei = now_utc + taipei_offset
+    (OUTPUT_DIR / "last_updated.json").write_text(
+        json.dumps({
+            "updated_utc":    now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "updated_taipei": now_taipei.strftime("%Y-%m-%d %H:%M TST"),
+        }, ensure_ascii=False),
+        encoding="utf-8",
+    )
     log.info("Pipeline complete. Output: %s/", OUTPUT_DIR)
 
 
