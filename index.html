@@ -3,100 +3,657 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Taiwan Real Estate Dashboard 台灣六都實價登錄趨勢</title>
+  <title>Taiwan Real Estate — 六都趨勢雷達</title>
 
-  <!-- Bootstrap 5 -->
-  <link
-    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-    rel="stylesheet"
-  />
-  <!-- DataTables + Bootstrap 5 skin -->
-  <link
-    href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css"
-    rel="stylesheet"
-  />
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- DataTables (vanilla, no Bootstrap skin) -->
+  <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet" />
 
   <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
     :root {
-      --rise-bg:  #ffe0e0;   /* positive QoQ/YoY → red tint  (price rose)   */
-      --fall-bg:  #d4f5d4;   /* negative QoQ/YoY → green tint (price fell)  */
-      --rise-txt: #8b0000;
-      --fall-txt: #1a5e1a;
+      --bg:           #080c14;
+      --bg-surface:   #0d1220;
+      --glass-bg:     rgba(13, 18, 32, 0.72);
+      --glass-border: rgba(0, 245, 196, 0.15);
+      --glass-border-hover: rgba(0, 245, 196, 0.45);
+
+      --neon-cyan:    #00f5c4;
+      --neon-red:     #ff2d55;
+      --neon-blue:    #4d9fff;
+      --neon-purple:  #a259ff;
+
+      --text-primary: #e8eaf2;
+      --text-muted:   #5a6480;
+      --text-dim:     #333d55;
+
+      --sidebar-w:    220px;
+      --header-h:     64px;
+
+      /* Cell colouring */
+      --rise-bg:  rgba(255, 45, 85,  0.12);
+      --rise-txt: #ff6b85;
+      --rise-glow: 0 0 8px rgba(255, 45, 85, 0.5);
+      --fall-bg:  rgba(0,  245, 196, 0.10);
+      --fall-txt: #00f5c4;
+      --fall-glow: 0 0 8px rgba(0, 245, 196, 0.45);
     }
 
-    body { background: #f7f8fa; }
+    /* ── Base ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
 
-    #header-bar {
-      background: linear-gradient(135deg, #c0392b 0%, #922b21 100%);
-      color: #fff;
-      padding: 1rem 1.5rem;
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13.5px;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
     }
-    #header-bar h1 { font-size: 1.4rem; margin: 0; }
-    #header-bar small { opacity: .8; font-size: .85rem; }
 
-    .nav-tabs .nav-link        { color: #555; }
-    .nav-tabs .nav-link.active { font-weight: 700; color: #c0392b; }
+    /* Animated starfield background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 20% 30%, rgba(0,245,196,.35) 0%, transparent 100%),
+        radial-gradient(1px 1px at 75% 15%, rgba(77,159,255,.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 70%, rgba(162,89,255,.25) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 55%, rgba(255,45,85,.2) 0%, transparent 100%),
+        radial-gradient(600px 600px at 10% 80%, rgba(0,245,196,.04) 0%, transparent 70%),
+        radial-gradient(800px 800px at 85% 10%, rgba(77,159,255,.05) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-    /* Conditional cell colouring */
-    .cell-rise { background-color: var(--rise-bg) !important; color: var(--rise-txt); font-weight: 600; }
-    .cell-fall { background-color: var(--fall-bg) !important; color: var(--fall-txt); font-weight: 600; }
+    /* ── Layout shell ──────────────────────────────────────────────────────── */
+    #app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
 
-    .district-link { cursor: pointer; color: #1a6db5; text-decoration: underline; }
-    .district-link:hover { color: #c0392b; }
+    /* ── Sidebar ───────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-right: 1px solid var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
 
-    #detail-table-wrap { display: none; }
+    #sidebar-logo {
+      padding: 1.4rem 1.2rem 1rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    #sidebar-logo .logo-mark {
+      font-size: .65rem;
+      font-weight: 600;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      opacity: .7;
+    }
+    #sidebar-logo h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.3;
+      margin-top: .25rem;
+    }
 
-    .back-btn { margin-bottom: .75rem; }
+    #sidebar-status {
+      padding: .75rem 1.2rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    #sidebar-status .label {
+      font-size: .6rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    #data-period {
+      font-size: .72rem;
+      color: var(--neon-cyan);
+      margin-top: .2rem;
+      line-height: 1.4;
+    }
 
-    .spinner-wrap { text-align: center; padding: 3rem; color: #888; }
+    #sidebar-nav {
+      flex: 1;
+      padding: .75rem 0;
+    }
+    #sidebar-nav .nav-section-label {
+      font-size: .6rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: .5rem 1.2rem .3rem;
+    }
 
-    /* Make DataTables header sticky inside card */
-    .dataTables_wrapper .dataTables_scrollHead { background: #fff; }
+    .city-btn {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      width: 100%;
+      padding: .6rem 1.2rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: .85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: color .2s, background .2s;
+      text-align: left;
+      position: relative;
+    }
+    .city-btn::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 20%;
+      height: 60%;
+      width: 2px;
+      background: var(--neon-cyan);
+      border-radius: 0 2px 2px 0;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .city-btn:hover {
+      color: var(--text-primary);
+      background: rgba(0,245,196,.05);
+    }
+    .city-btn.active {
+      color: var(--neon-cyan);
+      background: rgba(0,245,196,.08);
+    }
+    .city-btn.active::before { opacity: 1; }
 
-    footer { font-size: .78rem; color: #aaa; text-align: center; padding: 2rem 0; }
+    .city-btn .city-code {
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      background: rgba(0,245,196,.12);
+      color: var(--neon-cyan);
+      border-radius: 3px;
+      padding: .1em .4em;
+      min-width: 1.6rem;
+      text-align: center;
+    }
+    .city-btn.active .city-code {
+      background: rgba(0,245,196,.22);
+    }
+
+    #sidebar-footer {
+      padding: .9rem 1.2rem;
+      border-top: 1px solid var(--glass-border);
+      font-size: .65rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    #sidebar-footer a { color: var(--text-muted); text-decoration: none; }
+    #sidebar-footer a:hover { color: var(--neon-cyan); }
+
+    /* ── Main content ──────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ───────────────────────────────────────────────────────────── */
+    #topbar {
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      border-bottom: 1px solid var(--glass-border);
+      background: rgba(8,12,20,.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    #topbar-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    #topbar-title span { color: var(--neon-cyan); }
+
+    #topbar-legend {
+      display: flex;
+      gap: 1.2rem;
+      font-size: .7rem;
+      font-weight: 500;
+    }
+    .legend-item { display: flex; align-items: center; gap: .35rem; }
+    .legend-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+    }
+    .legend-dot.rise { background: var(--neon-red); box-shadow: 0 0 6px var(--neon-red); }
+    .legend-dot.fall { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+    .legend-item.rise { color: var(--rise-txt); }
+    .legend-item.fall { color: var(--fall-txt); }
+
+    /* ── Content area ──────────────────────────────────────────────────────── */
+    #content { flex: 1; padding: 1.5rem; }
+
+    /* ── Glass card ────────────────────────────────────────────────────────── */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: border-color .25s;
+    }
+    .glass-card:hover { border-color: var(--glass-border-hover); }
+
+    /* ── DataTables controls row ───────────────────────────────────────────── */
+    .dt-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-bottom: .75rem;
+    }
+
+    /* ── Section header ────────────────────────────────────────────────────── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .section-title {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .section-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 1em;
+      background: linear-gradient(180deg, var(--neon-cyan), var(--neon-blue));
+      border-radius: 2px;
+    }
+    .section-hint {
+      font-size: .7rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Spinner ───────────────────────────────────────────────────────────── */
+    .spinner-wrap {
+      text-align: center;
+      padding: 3.5rem 1rem;
+      color: var(--text-muted);
+      font-size: .85rem;
+    }
+    .spinner-ring {
+      display: inline-block;
+      width: 36px; height: 36px;
+      border: 3px solid rgba(0,245,196,.15);
+      border-top-color: var(--neon-cyan);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-bottom: .75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Detail panel ──────────────────────────────────────────────────────── */
+    #detail-table-wrap { display: none; margin-top: 1.25rem; }
+    #detail-title {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--neon-cyan);
+      margin-bottom: .75rem;
+      letter-spacing: .02em;
+    }
+
+    /* ── Back button ───────────────────────────────────────────────────────── */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .35rem .85rem;
+      font-family: inherit;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--neon-cyan);
+      background: rgba(0,245,196,.08);
+      border: 1px solid rgba(0,245,196,.3);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .2s, border-color .2s;
+      margin-bottom: .9rem;
+    }
+    .back-btn:hover {
+      background: rgba(0,245,196,.15);
+      border-color: rgba(0,245,196,.6);
+    }
+
+    /* ── Error / no-data banner ────────────────────────────────────────────── */
+    .alert-dark {
+      background: rgba(255,45,85,.08);
+      border: 1px solid rgba(255,45,85,.3);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      color: var(--rise-txt);
+      font-size: .82rem;
+      line-height: 1.6;
+    }
+    .alert-dark code {
+      background: rgba(255,255,255,.07);
+      padding: .1em .4em;
+      border-radius: 3px;
+      font-size: .85em;
+    }
+
+    /* ── DataTables dark override ──────────────────────────────────────────── */
+    table.dataTable { border-collapse: collapse !important; width: 100% !important; }
+
+    /* Wrapper */
+    .dataTables_wrapper {
+      color: var(--text-primary);
+      font-size: .82rem;
+    }
+
+    /* Controls row */
+    .dataTables_wrapper .dataTables_length,
+    .dataTables_wrapper .dataTables_filter,
+    .dataTables_wrapper .dataTables_info,
+    .dataTables_wrapper .dataTables_paginate {
+      color: var(--text-muted);
+      padding: .4rem 0;
+    }
+    .dataTables_wrapper .dataTables_filter input,
+    .dataTables_wrapper .dataTables_length select {
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px;
+      color: var(--text-primary);
+      padding: .3rem .6rem;
+      font-family: inherit;
+      font-size: .8rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .dataTables_wrapper .dataTables_filter input:focus,
+    .dataTables_wrapper .dataTables_length select:focus {
+      border-color: rgba(0,245,196,.5);
+      box-shadow: 0 0 0 3px rgba(0,245,196,.08);
+    }
+    .dataTables_wrapper .dataTables_filter label,
+    .dataTables_wrapper .dataTables_length label { color: var(--text-muted); }
+
+    /* Pagination */
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+      display: inline-block;
+      padding: .25rem .6rem;
+      border-radius: 5px;
+      cursor: pointer;
+      color: var(--text-muted) !important;
+      font-size: .75rem;
+      background: transparent;
+      border: 1px solid transparent;
+      transition: all .15s;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+      color: var(--neon-cyan) !important;
+      background: rgba(0,245,196,.08) !important;
+      border-color: rgba(0,245,196,.3) !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current,
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+      color: var(--neon-cyan) !important;
+      background: rgba(0,245,196,.14) !important;
+      border-color: rgba(0,245,196,.4) !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover {
+      color: var(--text-dim) !important;
+      background: transparent !important;
+      cursor: default;
+    }
+
+    /* Table header */
+    table.dataTable thead th {
+      background: rgba(0,245,196,.05);
+      border-bottom: 1px solid rgba(0,245,196,.18) !important;
+      color: var(--neon-cyan);
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: .65rem .75rem;
+      white-space: nowrap;
+    }
+    table.dataTable thead th.sorting,
+    table.dataTable thead th.sorting_asc,
+    table.dataTable thead th.sorting_desc { cursor: pointer; }
+    table.dataTable thead th.sorting_asc::after  { content: ' ↑'; opacity: .8; }
+    table.dataTable thead th.sorting_desc::after { content: ' ↓'; opacity: .8; }
+    table.dataTable thead th.sorting::after      { content: ' ⇅'; opacity: .3; font-size: .7em; }
+
+    /* Table body */
+    table.dataTable tbody tr {
+      background: transparent;
+      transition: background .15s;
+    }
+    table.dataTable tbody tr:nth-child(odd)  { background: rgba(255,255,255,.018); }
+    table.dataTable tbody tr:nth-child(even) { background: rgba(255,255,255,.008); }
+    table.dataTable tbody tr:hover td        { background: rgba(0,245,196,.04) !important; }
+
+    table.dataTable tbody td {
+      border-bottom: 1px solid rgba(255,255,255,.04) !important;
+      padding: .55rem .75rem;
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    /* Remove default DataTables borders */
+    table.dataTable,
+    table.dataTable thead th,
+    table.dataTable tbody td { border-left: none !important; border-right: none !important; }
+    table.dataTable.no-footer { border-bottom: 1px solid rgba(255,255,255,.06) !important; }
+
+    /* ── Conditional cells ─────────────────────────────────────────────────── */
+    .cell-rise {
+      background: var(--rise-bg) !important;
+      color: var(--rise-txt) !important;
+      font-weight: 600;
+      text-shadow: var(--rise-glow);
+    }
+    .cell-fall {
+      background: var(--fall-bg) !important;
+      color: var(--fall-txt) !important;
+      font-weight: 600;
+      text-shadow: var(--fall-glow);
+    }
+
+    /* ── District link ─────────────────────────────────────────────────────── */
+    .district-link {
+      cursor: pointer;
+      color: var(--neon-blue);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(77,159,255,.35);
+      transition: color .15s, border-color .15s, text-shadow .15s;
+    }
+    .district-link:hover {
+      color: var(--neon-cyan);
+      border-color: rgba(0,245,196,.5);
+      text-shadow: 0 0 8px rgba(0,245,196,.5);
+    }
+
+    /* ── Mobile hamburger ──────────────────────────────────────────────────── */
+    #menu-toggle {
+      display: none;
+      background: transparent;
+      border: 1px solid rgba(0,245,196,.3);
+      border-radius: 6px;
+      color: var(--neon-cyan);
+      padding: .3rem .55rem;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    /* ── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      :root { --sidebar-w: 100%; }
+
+      #app { flex-direction: column; }
+
+      #sidebar {
+        width: 100%;
+        min-height: unset;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--glass-border);
+      }
+
+      #sidebar-nav { padding: 0; }
+
+      .city-btn-list {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding: .5rem .75rem;
+        gap: .4rem;
+        scrollbar-width: none;
+      }
+      .city-btn-list::-webkit-scrollbar { display: none; }
+
+      .city-btn {
+        flex-shrink: 0;
+        border-radius: 20px;
+        border: 1px solid rgba(0,245,196,.2);
+        padding: .35rem .85rem;
+        font-size: .78rem;
+        white-space: nowrap;
+      }
+      .city-btn::before { display: none; }
+      .city-btn.active {
+        background: rgba(0,245,196,.12);
+        border-color: rgba(0,245,196,.55);
+      }
+
+      #sidebar-logo, #sidebar-status, #sidebar-footer { display: none; }
+      #sidebar-nav .nav-section-label { display: none; }
+
+      #topbar-legend { display: none; }
+      #topbar { padding: 0 1rem; }
+
+      #content { padding: .9rem; }
+
+      .glass-card { padding: .9rem; }
+    }
   </style>
 </head>
 <body>
+<div id="app">
 
-<!-- ── Header ──────────────────────────────────────────────────────────────── -->
-<div id="header-bar">
-  <h1>🏙️ Taiwan Real Estate Dashboard &nbsp;|&nbsp; 台灣六都實價登錄趨勢</h1>
-  <small id="data-period">Loading data…</small>
-</div>
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div id="sidebar-logo">
+      <div class="logo-mark">Real Estate Radar</div>
+      <h2>六都趨勢<br>監測系統</h2>
+    </div>
 
-<!-- ── City Tabs ───────────────────────────────────────────────────────────── -->
-<div class="container-fluid mt-3">
-  <ul class="nav nav-tabs" id="city-tabs" role="tablist"></ul>
+    <div id="sidebar-status">
+      <div class="label">Last Updated</div>
+      <div id="data-period">—</div>
+    </div>
 
-  <div class="tab-content mt-2" id="city-tab-content"></div>
-</div>
+    <nav id="sidebar-nav">
+      <div class="nav-section-label">Six Major Cities</div>
+      <div class="city-btn-list" id="city-nav"></div>
+    </nav>
 
-<!-- ── Detail Drill-down (shown when a district row is clicked) ────────────── -->
-<div class="container-fluid mt-3" id="detail-table-wrap">
-  <button class="btn btn-outline-secondary btn-sm back-btn" id="back-btn">
-    ← Back to Summary
-  </button>
-  <h5 id="detail-title" class="mb-2"></h5>
-  <div class="card shadow-sm p-3">
-    <table id="detail-table" class="table table-sm table-bordered table-hover w-100">
-      <thead></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
+    <div id="sidebar-footer">
+      Source: MOI 內政部<br>實價登錄資料<br>
+      Auto-updated by <a href="https://github.com" target="_blank">GitHub Actions</a>
+    </div>
+  </aside>
 
-<!-- ── Footer ──────────────────────────────────────────────────────────────── -->
-<footer>
-  Data source: MOI 內政部不動產成交案件實際資訊資料供應系統 &nbsp;|&nbsp;
-  Red = price ↑ &nbsp; Green = price ↓ &nbsp;|&nbsp;
-  Generated by <a href="https://github.com" target="_blank">GitHub Actions</a>
-</footer>
+  <!-- ── Main ────────────────────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Top bar -->
+    <header id="topbar">
+      <div id="topbar-title">
+        🏙 Taiwan Real Estate &nbsp;<span>六都趨勢雷達</span>
+      </div>
+      <div id="topbar-legend">
+        <div class="legend-item rise">
+          <span class="legend-dot rise"></span> Price ↑ QoQ/YoY
+        </div>
+        <div class="legend-item fall">
+          <span class="legend-dot fall"></span> Price ↓ QoQ/YoY
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div id="content">
+
+      <!-- Summary card -->
+      <div class="glass-card" id="summary-card">
+        <div class="section-header">
+          <div class="section-title" id="summary-title">District Trend Summary</div>
+          <div class="section-hint">Click a district name to drill into transaction details</div>
+        </div>
+        <div id="city-tab-content">
+          <div class="spinner-wrap">
+            <div class="spinner-ring"></div><br>Loading…
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail drill-down -->
+      <div id="detail-table-wrap">
+        <button class="back-btn" id="back-btn">← Back to Summary</button>
+        <div class="section-title" id="detail-title" style="margin-bottom:.75rem"></div>
+        <div class="glass-card">
+          <table id="detail-table" class="dataTable no-footer" style="width:100%">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+
+  </div><!-- /main -->
+</div><!-- /app -->
 
 <!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
 <script>
@@ -199,10 +756,15 @@ async function loadSummary(cityCode) {
   const city = manifest.cities[cityCode];
   activeCity = city.folder;
 
-  const paneId = `pane-${city.folder}`;
-  const wrap   = $(`#${paneId}`);
+  // Update sidebar active state
+  $('.city-btn').removeClass('active');
+  $(`.city-btn[data-city-code="${cityCode}"]`).addClass('active');
 
-  wrap.html(`<div class="spinner-wrap">⏳ Loading ${city.name} summary…</div>`);
+  // Update section title
+  $('#summary-title').text(`${city.name} — District Trend Summary`);
+
+  const wrap = $('#city-tab-content');
+  wrap.html(`<div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading ${city.name}…</div>`);
 
   // Destroy previous instance to avoid DataTables id conflicts
   if (summaryDT) {
@@ -214,23 +776,20 @@ async function loadSummary(cityCode) {
   try {
     rows = await loadCSV(`data/${city.folder}/summary.csv`);
   } catch (e) {
-    wrap.html(`<div class="alert alert-warning mt-3">No data yet for ${city.name}. Run the pipeline first.</div>`);
+    wrap.html(`<div class="alert-dark">No data for ${city.name}. Run <code>python main.py</code> first, then refresh.</div>`);
     return;
   }
 
   if (!rows.length) {
-    wrap.html(`<div class="alert alert-info mt-3">Summary file is empty.</div>`);
+    wrap.html(`<div class="alert-dark">Summary file is empty for ${city.name}.</div>`);
     return;
   }
 
   const tableId = `tbl-${city.folder}`;
   wrap.html(`
-    <div class="card shadow-sm p-3 mt-2">
-      <table id="${tableId}" class="table table-sm table-bordered table-hover w-100"></table>
-    </div>
-    <p class="text-muted mt-2" style="font-size:.8rem">
-      💡 Click a district name to see transaction details.
-      &nbsp; Red = price rose &nbsp; Green = price fell.
+    <table id="${tableId}" style="width:100%"></table>
+    <p style="margin-top:.6rem;font-size:.7rem;color:var(--text-muted)">
+      Click a district name to drill into transaction details.
     </p>
   `);
 
@@ -239,10 +798,10 @@ async function loadSummary(cityCode) {
   summaryDT = $(`#${tableId}`).DataTable({
     data:      rows,
     columns:   cols,
-    order:     [[1, 'desc'], [0, 'asc']],   // newest quarter first
+    order:     [[1, 'desc'], [0, 'asc']],
     pageLength: 25,
-    dom: '<"row"<"col-sm-6"l><"col-sm-6"f>>rtp',
-    language: { search: 'Search 搜尋:' },
+    dom: '<"dt-controls"lf>rtp',
+    language: { search: '🔍', searchPlaceholder: 'Search district…', lengthMenu: 'Show _MENU_' },
   });
 }
 
@@ -305,55 +864,34 @@ async function loadDetail(cityFolder, districtEncoded) {
     columns:   cols,
     order:     [],
     pageLength: 25,
-    dom: '<"row"<"col-sm-6"l><"col-sm-6"f>>rtp',
-    language:  { search: 'Search 搜尋:' },
+    dom: '<"dt-controls"lf>rtp',
+    language:  { search: '🔍', searchPlaceholder: 'Search…', lengthMenu: 'Show _MENU_' },
   });
 }
 
-/* ── Tab setup ───────────────────────────────────────────────────────────── */
+/* ── Sidebar nav setup ───────────────────────────────────────────────────── */
 
 const CITY_ORDER = ['A', 'F', 'H', 'B', 'D', 'E'];
 
-function buildTabs(mf) {
-  const tabList  = $('#city-tabs');
-  const tabPanes = $('#city-tab-content');
-
-  CITY_ORDER.forEach((code, idx) => {
-    const city   = mf.cities[code];
-    const paneId = `pane-${city.folder}`;
-    const tabId  = `tab-${city.folder}`;
-
-    tabList.append(`
-      <li class="nav-item" role="presentation">
-        <button
-          class="nav-link ${idx === 0 ? 'active' : ''}"
-          id="${tabId}"
-          data-bs-toggle="tab"
-          data-bs-target="#${paneId}"
-          data-city-code="${code}"
-          type="button"
-          role="tab"
-        >${city.name}</button>
-      </li>
-    `);
-
-    tabPanes.append(`
-      <div
-        class="tab-pane fade ${idx === 0 ? 'show active' : ''}"
-        id="${paneId}"
-        role="tabpanel"
-      >
-        <div class="spinner-wrap">⏳ Click the tab to load data…</div>
-      </div>
+function buildSidebar(mf) {
+  const nav = $('#city-nav');
+  CITY_ORDER.forEach((code) => {
+    const city = mf.cities[code];
+    nav.append(`
+      <button class="city-btn" data-city-code="${code}">
+        <span class="city-code">${code}</span>
+        ${city.name}
+      </button>
     `);
   });
 }
 
 /* ── Event delegation ────────────────────────────────────────────────────── */
 
-// Load summary when a tab is shown
-$(document).on('shown.bs.tab', 'button[data-city-code]', function () {
+// City nav button click
+$(document).on('click', '.city-btn', function () {
   const code = $(this).data('city-code');
+  $('#detail-table-wrap').hide();
   loadSummary(code);
 });
 
@@ -378,10 +916,10 @@ $(async function () {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     mf = await resp.json();
   } catch (e) {
-    $('#city-tabs').after(
-      `<div class="alert alert-warning m-3">
-        <strong>No data yet.</strong> Run <code>python main.py</code> to generate the data files,
-        then refresh this page.
+    $('#city-tab-content').html(
+      `<div class="alert-dark">
+        <strong>No data yet.</strong><br>
+        Run <code>python main.py</code> to generate data files, then refresh.
        </div>`
     );
     return;
@@ -392,14 +930,13 @@ $(async function () {
   // Show data freshness
   const ts = new Date(mf.generated);
   $('#data-period').text(
-    `Data generated: ${ts.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })} (Taipei)`
+    ts.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
   );
 
-  buildTabs(mf);
+  buildSidebar(mf);
 
-  // Auto-load first city tab
-  const firstCode = CITY_ORDER[0];
-  loadSummary(firstCode);
+  // Auto-load first city
+  loadSummary(CITY_ORDER[0]);
 });
 </script>
 </body>
