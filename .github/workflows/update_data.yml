@@ -1,0 +1,53 @@
+name: Update Real Estate Data
+
+on:
+  schedule:
+    # 02:00 Taipei time (UTC+8) on the 2nd, 12th, and 22nd of every month
+    # → 18:00 UTC on the 1st, 11th, and 21st
+    - cron: "0 18 1,11,21 * *"
+  workflow_dispatch:  # allow manual trigger from the Actions UI
+
+permissions:
+  contents: write  # required to commit updated data back to the repo
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        run: python main.py
+        env:
+          PYTHONUNBUFFERED: "1"  # stream logs in real time
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          # Only commit when there are actual changes; avoid empty commits
+          git diff --staged --quiet \
+            || git commit -m "auto: update real estate data $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push

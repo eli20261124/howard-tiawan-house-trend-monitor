@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Temp / runtime artifacts
+/tmp/
+moi_re_*/
+
+# OS
+.DS_Store
+Thumbs.db

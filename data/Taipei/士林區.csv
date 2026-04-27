@@ -1,0 +1,7 @@
+﻿District,Floor,FloorCategory,BuildingType,TotalPrice_10kTWD,PricePerPing,Quarter,Status
+士林區,二層，通道,二層，通道,Elevator Building,1533.0,95.91,2026Q1,
+士林區,三層,Low (1-5F),公寓(5樓含以下無電梯),1470.0,44.91,2026Q1,
+士林區,二層,Low (1-5F),公寓(5樓含以下無電梯),1230.0,42.07,2026Q1,
+士林區,八層,Mid (6-10F),Mansion,4100.0,75.01,2026Q1,
+士林區,四層,Low (1-5F),Elevator Building,4500.0,89.98,2026Q1,
+士林區,一層,Low (1-5F),Elevator Building,4250.0,70.89,2025Q4,

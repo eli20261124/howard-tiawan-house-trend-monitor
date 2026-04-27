@@ -1,0 +1,13 @@
+﻿District,Floor,FloorCategory,BuildingType,TotalPrice_10kTWD,PricePerPing,Quarter,Status
+小港區,一層，騎樓，夾層,一層，騎樓，夾層,公寓(5樓含以下無電梯),500.0,30.96,2026Q1,
+小港區,三層,Low (1-5F),Mansion,1106.0,24.99,2026Q1,
+小港區,二層,Low (1-5F),Elevator Building,645.0,27.71,2026Q1,
+小港區,二層,Low (1-5F),Mansion,1080.0,25.79,2026Q1,
+小港區,九層,Mid (6-10F),Mansion,530.0,25.26,2026Q1,
+小港區,九層,Mid (6-10F),Mansion,1355.0,36.49,2026Q1,
+小港區,六層,Mid (6-10F),Mansion,1010.0,32.23,2026Q1,
+小港區,七層,Mid (6-10F),Mansion,836.0,32.46,2026Q1,
+小港區,八層,Mid (6-10F),Mansion,1438.0,33.4,2026Q1,
+小港區,六層,Mid (6-10F),Mansion,1086.0,32.25,2026Q1,
+小港區,十六層,High (11-20F),Mansion,1096.0,34.09,2026Q1,
+小港區,八層,Mid (6-10F),Elevator Building,580.0,14.51,2026Q1,

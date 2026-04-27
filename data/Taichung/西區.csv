@@ -1,0 +1,13 @@
+﻿District,Floor,FloorCategory,BuildingType,TotalPrice_10kTWD,PricePerPing,Quarter,Status
+西區,四層,Low (1-5F),Mansion,170.0,16.44,2026Q1,
+西區,七層,Mid (6-10F),Mansion,455.0,33.19,2026Q1,
+西區,十層,Mid (6-10F),Mansion,1615.0,41.62,2026Q1,
+西區,四層,Low (1-5F),Mansion,1303.0,40.14,2026Q1,
+西區,十三層,High (11-20F),Mansion,1465.0,29.47,2026Q1,
+西區,八層,Mid (6-10F),Mansion,348.0,33.78,2026Q1,
+西區,十層,Mid (6-10F),Mansion,3519.0,69.68,2026Q1,
+西區,五層,Low (1-5F),Mansion,220.0,24.4,2026Q1,
+西區,十一層,High (11-20F),Mansion,550.0,29.59,2025Q4,
+西區,二十五層,Super High (21F+),Mansion,888.0,33.36,2025Q4,
+西區,十二層,High (11-20F),Mansion,9460.0,65.24,2025Q4,
+西區,三層,Low (1-5F),Mansion,1660.0,42.19,2025Q3,

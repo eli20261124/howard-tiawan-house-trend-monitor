@@ -1,0 +1,13 @@
+﻿District,Floor,FloorCategory,BuildingType,TotalPrice_10kTWD,PricePerPing,Quarter,Status
+苓雅區,五層,Low (1-5F),公寓(5樓含以下無電梯),388.0,11.41,2026Q1,
+苓雅區,二層,Low (1-5F),Mansion,1150.0,38.54,2026Q1,
+苓雅區,十三層,High (11-20F),Mansion,348.0,24.6,2026Q1,
+苓雅區,五層,Low (1-5F),公寓(5樓含以下無電梯),458.0,15.42,2026Q1,
+苓雅區,九層,Mid (6-10F),Mansion,645.0,16.83,2026Q1,
+苓雅區,十二層,High (11-20F),Mansion,3260.0,38.16,2026Q1,
+苓雅區,四層,Low (1-5F),Mansion,1200.0,32.68,2026Q1,
+苓雅區,十三層,High (11-20F),Mansion,1430.0,44.61,2026Q1,
+苓雅區,二十四層,Super High (21F+),Mansion,1750.0,36.85,2026Q1,
+苓雅區,一層，騎樓,一層，騎樓,公寓(5樓含以下無電梯),1500.0,41.6,2026Q1,
+苓雅區,二層,Low (1-5F),Mansion,2730.0,39.95,2026Q1,
+苓雅區,全,Unknown,Townhouse,1060.0,53.98,2026Q1,

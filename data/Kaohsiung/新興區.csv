@@ -1,0 +1,13 @@
+﻿District,Floor,FloorCategory,BuildingType,TotalPrice_10kTWD,PricePerPing,Quarter,Status
+新興區,四層，走廊,四層，走廊,Mansion,175.0,17.5,2026Q1,
+新興區,十層,Mid (6-10F),Mansion,290.0,17.51,2026Q1,
+新興區,四層,Low (1-5F),Mansion,750.0,23.07,2026Q1,
+新興區,八層,Mid (6-10F),Mansion,239.0,24.54,2026Q1,
+新興區,七層,Mid (6-10F),Mansion,250.0,26.3,2026Q1,
+新興區,二十一層,Super High (21F+),Mansion,2300.0,33.41,2026Q1,
+新興區,三層,Low (1-5F),Mansion,2380.0,16.69,2026Q1,
+新興區,七層,Mid (6-10F),Mansion,1430.0,40.51,2026Q1,
+新興區,三層,Low (1-5F),Mansion,1160.0,36.29,2026Q1,
+新興區,十五層,High (11-20F),Mansion,920.0,35.07,2026Q1,
+新興區,三層,Low (1-5F),Mansion,1410.0,32.58,2025Q4,
+新興區,十三層,High (11-20F),Mansion,1783.0,42.73,2025Q4,
