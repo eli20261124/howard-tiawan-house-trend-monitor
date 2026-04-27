@@ -985,6 +985,7 @@ let chartTrend = null;
 let chartTop10 = null;
 let chartCombo = null;
 let currentTimeseries = null;
+let currentPresaleTimeseries = null;
 let currentCityCode = null;
 let currentSummaryRows = [];
 let geoIndex = [];
@@ -1064,7 +1065,7 @@ function tlClass(yoy) {
   return 'tl-green';
 }
 
-function updateInsightRows(rows) {
+function updateInsightRows(rows, pts) {
   const $list = $('#insight-list');
   if (!rows.length) { $list.html(''); return; }
 
@@ -1092,11 +1093,7 @@ function updateInsightRows(rows) {
 
   const risingCount  = latestRows.filter(r => parseFloat(r.YoY_pct) > 0).length;
   const fallingCount = latestRows.filter(r => parseFloat(r.YoY_pct) < 0).length;
-  const lowN = Object.values(rows.reduce((acc, row) => {
-    const key = row.District;
-    if (!acc[key] || quarterKey(row.Quarter) > quarterKey(acc[key].Quarter)) acc[key] = row;
-    return acc;
-  }, {})).filter(r => parseInt(r.TransactionCount, 10) < MIN_SAMPLE_JS).length;
+  const lowN = Object.values(latest).filter(r => parseInt(r.TransactionCount, 10) < MIN_SAMPLE_JS).length;
 
   const hotLabel  = hotRow  ? hotRow.District  : '—';
   const coolLabel = coolRow ? coolRow.District : '—';
@@ -1105,7 +1102,27 @@ function updateInsightRows(rows) {
   const momentum  = risingCount > fallingCount ? '↑ Heating' : risingCount < fallingCount ? '↓ Cooling' : '→ Flat';
   const momentumClass = risingCount > fallingCount ? 'tl-red' : risingCount < fallingCount ? 'tl-green' : 'tl-dim';
 
+  // Premium Gap: presale city_median vs actual city_median in latest shared quarter
+  let premiumHtml = `<span class="value tl-dim">No presale data</span>`;
+  if (pts && pts.city_median && pts.quarters && currentTimeseries) {
+    const actQ  = latestNonNull(currentTimeseries.quarters);
+    const ptIdx = pts.quarters.lastIndexOf(actQ);
+    const acIdx = currentTimeseries.quarters.lastIndexOf(actQ);
+    const presalePrice = ptIdx >= 0 ? pts.city_median[ptIdx] : latestNonNull(pts.city_median);
+    const actualPrice  = acIdx >= 0 ? currentTimeseries.city_median[acIdx] : latestNonNull(currentTimeseries.city_median);
+    if (presalePrice != null && actualPrice != null && actualPrice > 0) {
+      const gap = (presalePrice - actualPrice) / actualPrice * 100;
+      const gapTxt = (gap >= 0 ? '+' : '') + gap.toFixed(1) + '%';
+      const gapCls = gap > 20 ? 'tl-red' : gap > 5 ? 'tl-yellow' : 'tl-green';
+      premiumHtml = `<span class="value ${gapCls}">${gapTxt} <small style="font-weight:400;font-size:.75em">(${presalePrice.toFixed(0)} vs ${actualPrice.toFixed(0)} 萬)</small></span>`;
+    }
+  }
+
   $list.html(`
+    <div class="insight-row">
+      <span class="label">⚖️ Pre-sale Premium Gap</span>
+      ${premiumHtml}
+    </div>
     <div class="insight-row">
       <span class="label">🔥 Hottest District</span>
       <span class="value ${tlClass(hotYoY)}">${hotLabel} ${hotVal}</span>
@@ -1115,12 +1132,8 @@ function updateInsightRows(rows) {
       <span class="value ${tlClass(coolYoY)}">${coolLabel} ${coolVal}</span>
     </div>
     <div class="insight-row">
-      <span class="label">📊 Districts Rising / Falling</span>
-      <span class="value tl-dim">${risingCount} ↑ &nbsp; ${fallingCount} ↓</span>
-    </div>
-    <div class="insight-row">
       <span class="label">📈 City Momentum</span>
-      <span class="value ${momentumClass}">${momentum}</span>
+      <span class="value ${momentumClass}">${momentum} &nbsp; <small style="font-weight:400">${risingCount}↑ ${fallingCount}↓</small></span>
     </div>
     <div class="insight-row">
       <span class="label">⚠️ Low-confidence Districts</span>
@@ -1129,7 +1142,7 @@ function updateInsightRows(rows) {
   `);
 }
 
-function updateMetricCards(city, ts, rows) {
+function updateMetricCards(city, ts, rows, pts) {
   const lastQuarter = latestNonNull(ts.quarters || []);
   const latestPrice = latestNonNull(ts.city_median || []);
   const latestCount = latestNonNull(ts.city_volume || []);
@@ -1150,13 +1163,24 @@ function updateMetricCards(city, ts, rows) {
     : '—';
   const signalClass = tlClass(avgYoY);
 
+  // Presale price for metric card
+  let presaleLabel = '—';
+  let presaleNote  = 'Presale data not available';
+  if (pts && pts.city_median) {
+    const pv = latestNonNull(pts.city_median);
+    if (pv != null) {
+      presaleLabel = `${fmt(pv)} 萬`;
+      presaleNote  = `${latestNonNull(pts.quarters) || ''} presale median`;
+    }
+  }
+
   $('#metric-area').text(city ? city.name : '—');
   $('#metric-area-note').text(city ? `${Object.keys(latestPerDistrict).length} districts loaded` : 'Use search to jump to an area');
   $('#metric-quarter').text(lastQuarter || '—');
   $('#metric-price').text(latestPrice != null ? `${fmt(latestPrice)} 萬` : '—');
   $('#metric-count').text(latestCount != null ? `${fmt(latestCount, 0)} 件` : '—');
   $('#metric-signal').text(signalTxt);
-  $('#metric-quarter-note').text(city ? 'City-wide median price/ping' : 'No city selected');
+  $('#metric-quarter-note').text(presaleLabel !== '—' ? `Pre-sale: ${presaleLabel}` : 'City-wide median price/ping');
   $('#metric-price-note').text('Trimmed median (excl. top/bottom 5%)');
   $('#metric-count-note').text(city ? 'City-wide quarter volume' : 'No data loaded');
   $('#metric-signal-note').text(`QoQ avg ${avgQoQ >= 0 ? '+' : ''}${avgQoQ.toFixed(1)}%`);
@@ -1262,7 +1286,7 @@ async function loadSummary(cityCode) {
   }
 
   currentSummaryRows = rows;
-  updateInsightRows(rows);
+  updateInsightRows(rows, currentPresaleTimeseries);
 
   const tableId = `tbl-${city.folder}`;
   wrap.html(`
@@ -1283,7 +1307,7 @@ async function loadSummary(cityCode) {
     language: { search: '🔍', searchPlaceholder: 'Search district…', lengthMenu: 'Show _MENU_' },
   });
 
-  updateMetricCards(city, currentTimeseries || {}, rows);
+  updateMetricCards(city, currentTimeseries || {}, rows, currentPresaleTimeseries);
 }
 
 /* ── Detail drill-down ───────────────────────────────────────────────────── */
@@ -1377,6 +1401,7 @@ async function updateCharts(cityCode) {
   }
 
   currentTimeseries = ts;
+  currentPresaleTimeseries = null;   // reset; will be set below
 
   $('#trend-chart-title').text(`${city.name} — Market Momentum 市場動能`);
 
@@ -1386,6 +1411,7 @@ async function updateCharts(cityCode) {
     const pr = await fetch(`data/${city.folder}/presale_timeseries.json`);
     if (pr.ok) pts = await pr.json();
   } catch (_) { /* presale data not yet generated */ }
+  currentPresaleTimeseries = pts;
 
   renderTrendChart(ts, pts);
   renderComboChart(ts);
@@ -1395,7 +1421,7 @@ async function updateCharts(cityCode) {
     const rows = await loadCSV(`data/${city.folder}/summary.csv`);
     renderTop10Chart(rows);
     if (currentSummaryRows.length) {
-      updateMetricCards(city, ts, currentSummaryRows);
+      updateMetricCards(city, ts, currentSummaryRows, currentPresaleTimeseries);
     }
   } catch (e) {
     // Top-10 silently hidden if summary unavailable
