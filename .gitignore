@@ -16,10 +16,19 @@ __pycache__/
 *.pfx
 id_rsa*
 
-# Generated data artifacts
+# Generated data artifacts  (raw MOI CSVs, Parquet snapshots, legacy outputs)
 data/**/*.csv
 data/**/*.parquet
+data/Kaohsiung/
+data/New_Taipei/
+data/Taichung/
+data/Tainan/
+data/Taipei/
+data/Taoyuan/
+data/last_updated.json
+data/manifest.json
 # Keep project_info CSVs (needed by pipeline on CI)
+!data/project_info/
 !data/project_info/*.csv
 
 # Temp / runtime artifacts
