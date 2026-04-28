@@ -19,6 +19,8 @@ id_rsa*
 # Generated data artifacts
 data/**/*.csv
 data/**/*.parquet
+# Keep project_info CSVs (needed by pipeline on CI)
+!data/project_info/*.csv
 
 # Temp / runtime artifacts
 /tmp/

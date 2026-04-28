@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write  # required to commit updated data back to the repo
+  pages: write     # required for GitHub Pages deployment
+  id-token: write  # required for OIDC-based Pages deployment
 
 jobs:
   update-data:
@@ -35,11 +37,11 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
 
-      - name: Commit refreshed insights
+      - name: Commit refreshed data
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/processed/*/v2_insights.json
+          find data/processed -name "*.json" | xargs git add --
           git diff --staged --quiet \
-            || git commit -m "auto: refresh v2 insights $(date -u +'%Y-%m-%d %H:%M UTC')"
+            || git commit -m "auto: refresh data $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push

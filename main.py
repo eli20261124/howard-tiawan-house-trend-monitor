@@ -17,7 +17,7 @@ import sys
 import zipfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 import requests
@@ -1485,6 +1485,150 @@ def export_v2_insights(
     log.info("  Wrote v2_insights.json (%d districts)", len(insights))
 
 
+def export_static_pages(city_name: str, city_dir: Path) -> None:
+    """
+    Generate static JSON API files for GitHub Pages (zero-server) deployment.
+
+    Writes inside data/processed/{City}/:
+      leaderboard.json      – all districts, ranked by OracleNextMedian desc
+      health-tiles.json     – traffic-light indicators per district
+      districts.json        – snapshot_meta district list
+      rows/{District}.json  – up to 200 rows per track, both tracks combined
+    """
+    MAX_ROWS_PER_TRACK = 200
+
+    insights_path = city_dir / "v2_insights.json"
+    meta_path     = city_dir / "snapshot_meta.json"
+    if not (insights_path.exists() and meta_path.exists()):
+        log.warning("  Skipping static pages for %s: missing v2_insights/snapshot_meta", city_name)
+        return
+
+    insights       = json.loads(insights_path.read_text(encoding="utf-8"))
+    meta           = json.loads(meta_path.read_text(encoding="utf-8"))
+    dist_meta_list = meta.get("districts", [])
+    dist_insights  = insights.get("districts", {})
+
+    # ── Leaderboard ──────────────────────────────────────────────────────────
+    lb_items: list[dict] = []
+    for d_info in dist_meta_list:
+        dist = d_info.get("district", "")
+        di   = dist_insights.get(dist, {})
+        lb_items.append({
+            "District":              dist,
+            "Quarter":               di.get("latest_quarter"),
+            "MedianPricePerPing":    di.get("actual_median"),
+            "OracleNextMedian":      di.get("oracle_next_median"),
+            "OracleTrend":           di.get("oracle_trend"),
+            "ResilienceScore":       None,
+            "DrawdownPct":           None,
+            "ConfidenceLeveragePct": di.get("premium_gap_pct"),
+            "MarketTemp":            di.get("market_temp"),
+            "ShortTermRatioPct":     di.get("short_term_ratio_pct"),
+            "ClusterCount":          None,
+            "TransactionCount":      di.get("transaction_count"),
+            "PriceToRentRatio":      di.get("price_to_rent"),
+            "RentalAnchorLabel":     di.get("rental_anchor_label", "⚪ N/A"),
+            "LeverageFlag":          di.get("leverage_flag", "⚪ N/A"),
+            "RippleTag":             di.get("ripple_tag", ""),
+        })
+    lb_items.sort(key=lambda x: (x.get("OracleNextMedian") or 0), reverse=True)
+
+    (city_dir / "leaderboard.json").write_text(
+        json.dumps(
+            {"city": city_name, "records_total": len(lb_items), "items": lb_items},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    # ── Health tiles ─────────────────────────────────────────────────────────
+    tiles: list[dict] = []
+    for item in lb_items:
+        lev = float(item.get("ConfidenceLeveragePct") or 0)
+        dom = float(item.get("ShortTermRatioPct") or 0)
+        tiles.append({
+            "district":       item["District"],
+            "market_temp":    item.get("MarketTemp", "⚪ N/A"),
+            "leverage_light": "red" if lev > 25 else ("yellow" if lev > 10 else "green"),
+            "dom_light":      "red" if dom > 30 else ("yellow" if dom > 15 else "green"),
+            "cluster_light":  "green",
+            "ripple_tag":     item.get("RippleTag", ""),
+            "rental_label":   item.get("RentalAnchorLabel", "⚪ N/A"),
+            "resilience":     item.get("ResilienceScore"),
+        })
+    (city_dir / "health-tiles.json").write_text(
+        json.dumps({"city": city_name, "tiles": tiles}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    # ── Districts list ────────────────────────────────────────────────────────
+    (city_dir / "districts.json").write_text(
+        json.dumps({"city": city_name, "districts": dist_meta_list}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    # ── Per-district row JSON ─────────────────────────────────────────────────
+    rows_dir = city_dir / "rows"
+    rows_dir.mkdir(exist_ok=True)
+
+    def _jsonify(v: Any) -> Any:
+        if isinstance(v, pd.Timestamp):
+            return v.isoformat()
+        try:
+            if pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        try:
+            return v.item()
+        except AttributeError:
+            return v
+
+    written = 0
+    for d_info in dist_meta_list:
+        dist    = d_info.get("district", "")
+        safe    = _safe_name(str(dist))
+        parquet = city_dir / f"{safe}{V3_SNAPSHOT_SUFFIX}"
+        if not parquet.exists():
+            continue
+        try:
+            df = pd.read_parquet(parquet)
+            if "Date" in df.columns:
+                df = df.sort_values("Date", ascending=False, na_position="last")
+
+            if "Track" in df.columns:
+                parts = [grp.head(MAX_ROWS_PER_TRACK) for _, grp in df.groupby("Track")]
+                df_out = pd.concat(parts, ignore_index=True) if parts else df.head(MAX_ROWS_PER_TRACK)
+            else:
+                df_out = df.head(MAX_ROWS_PER_TRACK)
+
+            records = [
+                {k: _jsonify(v) for k, v in row.items()}
+                for row in df_out.to_dict(orient="records")
+            ]
+            date_vals = [r["Date"] for r in records if r.get("Date")]
+            out_path  = rows_dir / f"{dist}.json"
+            out_path.write_text(
+                json.dumps({
+                    "city":           city_name,
+                    "district":       dist,
+                    "records_total":  len(records),
+                    "date_min":       min(date_vals) if date_vals else None,
+                    "date_max":       max(date_vals) if date_vals else None,
+                    "items":          records,
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            written += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning("  Static rows export failed for %s/%s: %s", city_name, dist, exc)
+
+    log.info(
+        "  Wrote static API files for %s (%d districts, %d row files)",
+        city_name, len(dist_meta_list), written,
+    )
+
+
 # ── Export ─────────────────────────────────────────────────────────────────────
 
 def _safe_name(s: str) -> str:
@@ -1663,6 +1807,7 @@ def export_city(city_name: str, df: pd.DataFrame,
     else:
         log.warning("  %s: no summary data produced", city_name)
 
+    export_static_pages(city_name, city_dir)
     return districts
 
 

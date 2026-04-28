@@ -404,18 +404,91 @@ function tempLight(temp) {
   return 'g';
 }
 
+/* ── GitHub Pages static-mode detection ────────────────────────── */
+const IS_GH = location.hostname.endsWith('github.io');
+
 async function api(path) {
+  if (IS_GH) return _staticApi(path);
   const r = await fetch(path);
   if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
   return r.json();
 }
 
+/* Map FastAPI paths → static JSON files for GitHub Pages */
+async function _staticApi(path) {
+  const [url, qs] = path.split('?');
+  const qp = new URLSearchParams(qs || '');
+
+  // /api/manifest
+  if (url === '/api/manifest') {
+    const r = await fetch('./data/processed/manifest.json');
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+
+  // /api/{city}/leaderboard
+  const mLB = url.match(/^\/api\/([^/]+)\/leaderboard/);
+  if (mLB) {
+    const r = await fetch(`./data/processed/${mLB[1]}/leaderboard.json`);
+    if (!r.ok) throw new Error(r.status);
+    const all = await r.json();
+    const sortBy  = qp.get('sort_by')  || 'OracleNextMedian';
+    const sortDir = qp.get('sort_dir') || 'desc';
+    const items = [...(all.items || [])].sort((a, b) => {
+      const av = a[sortBy] ?? null, bv = b[sortBy] ?? null;
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1; if (bv === null) return -1;
+      return sortDir === 'desc' ? (bv > av ? 1 : bv < av ? -1 : 0)
+                                : (av > bv ? 1 : av < bv ? -1 : 0);
+    });
+    return { ...all, items };
+  }
+
+  // /api/{city}/health-tiles
+  const mHT = url.match(/^\/api\/([^/]+)\/health-tiles/);
+  if (mHT) {
+    const r = await fetch(`./data/processed/${mHT[1]}/health-tiles.json`);
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+
+  // /api/{city}/districts  (list, no sub-path)
+  const mDL = url.match(/^\/api\/([^/]+)\/districts$/);
+  if (mDL) {
+    const r = await fetch(`./data/processed/${mDL[1]}/districts.json`);
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+
+  // /api/{city}/districts/{district}/rows
+  const mDR = url.match(/^\/api\/([^/]+)\/districts\/([^/]+)\/rows/);
+  if (mDR) {
+    const city     = mDR[1];
+    const district = decodeURIComponent(mDR[2]);
+    const track    = qp.get('track')     || '';
+    const page     = parseInt(qp.get('page')      || '1');
+    const psz      = parseInt(qp.get('page_size') || '20');
+    const r = await fetch(`./data/processed/${city}/rows/${district}.json`);
+    if (!r.ok) throw new Error(r.status);
+    const all = await r.json();
+    let items = all.items || [];
+    if (track) items = items.filter(x => (x.Track || '').toLowerCase() === track.toLowerCase());
+    const total = items.length;
+    return { ...all, records_total: total, items: items.slice((page - 1) * psz, page * psz) };
+  }
+
+  throw new Error('Unknown static API path: ' + path);
+}
+
 /* ── Boot ───────────────────────────────────────────────────────── */
 (async function boot() {
   try {
+    const luPath = IS_GH
+      ? './data/processed/last_updated.json'
+      : '/data/processed/last_updated.json';
     const [manifest, lu] = await Promise.all([
       api('/api/manifest'),
-      fetch('/data/processed/last_updated.json').then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(luPath).then(r => r.ok ? r.json() : null).catch(() => null),
     ]);
     buildCityNav(manifest);
     // Auto-load Taipei on first visit
@@ -426,7 +499,9 @@ async function api(path) {
       $('footer-sync').textContent = '最後同步：' + (lu.updated_taipei || '');
     }
   } catch (e) {
-    $('city-nav').innerHTML = '<div style="padding:.5rem 1rem;color:var(--red);font-size:.75rem">API offline — run: <code>uvicorn api:app</code></div>';
+    $('city-nav').innerHTML = IS_GH
+      ? '<div style="padding:.5rem 1rem;color:var(--red);font-size:.75rem">Static data load failed — check data/processed/ files.</div>'
+      : '<div style="padding:.5rem 1rem;color:var(--red);font-size:.75rem">API offline — run: <code>uvicorn api:app</code></div>';
   }
 })();
 

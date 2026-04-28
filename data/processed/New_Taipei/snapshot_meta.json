@@ -1,6 +1,6 @@
 {
   "city": "New_Taipei",
-  "generated": "2026-04-28T08:39:03.205646+00:00",
+  "generated": "2026-04-28T09:14:36.965874+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [
