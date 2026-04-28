@@ -1,0 +1,243 @@
+{
+  "city": "Taichung",
+  "generated": "2026-04-28T08:39:05.109089+00:00",
+  "snapshot_format": "parquet",
+  "snapshot_suffix": "_v3.parquet",
+  "districts": [
+    {
+      "district": "中區",
+      "file": "中區_v3.parquet",
+      "rows": 2,
+      "date_min": "2026-01-25",
+      "date_max": "2026-03-15",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "南區",
+      "file": "南區_v3.parquet",
+      "rows": 16,
+      "date_min": "2025-12-11",
+      "date_max": "2026-03-08",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "南屯區",
+      "file": "南屯區_v3.parquet",
+      "rows": 28,
+      "date_min": "2025-10-28",
+      "date_max": "2026-03-14",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "后里區",
+      "file": "后里區_v3.parquet",
+      "rows": 5,
+      "date_min": "2025-12-17",
+      "date_max": "2026-03-04",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "外埔區",
+      "file": "外埔區_v3.parquet",
+      "rows": 2,
+      "date_min": "2026-03-09",
+      "date_max": "2026-03-16",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "大甲區",
+      "file": "大甲區_v3.parquet",
+      "rows": 7,
+      "date_min": "2025-11-11",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "大雅區",
+      "file": "大雅區_v3.parquet",
+      "rows": 8,
+      "date_min": "2025-12-07",
+      "date_max": "2026-03-03",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "太平區",
+      "file": "太平區_v3.parquet",
+      "rows": 19,
+      "date_min": "2022-12-28",
+      "date_max": "2026-03-09",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "東勢區",
+      "file": "東勢區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-01-23",
+      "date_max": "2026-01-23",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "東區",
+      "file": "東區_v3.parquet",
+      "rows": 6,
+      "date_min": "2025-01-03",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "梧棲區",
+      "file": "梧棲區_v3.parquet",
+      "rows": 4,
+      "date_min": "2026-01-12",
+      "date_max": "2026-03-08",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "沙鹿區",
+      "file": "沙鹿區_v3.parquet",
+      "rows": 16,
+      "date_min": "2021-11-27",
+      "date_max": "2026-03-08",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "清水區",
+      "file": "清水區_v3.parquet",
+      "rows": 6,
+      "date_min": "2025-12-26",
+      "date_max": "2026-03-05",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "潭子區",
+      "file": "潭子區_v3.parquet",
+      "rows": 11,
+      "date_min": "2025-12-28",
+      "date_max": "2026-03-04",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "烏日區",
+      "file": "烏日區_v3.parquet",
+      "rows": 13,
+      "date_min": "2025-11-30",
+      "date_max": "2026-03-09",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "石岡區",
+      "file": "石岡區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-01-07",
+      "date_max": "2026-01-07",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "神岡區",
+      "file": "神岡區_v3.parquet",
+      "rows": 4,
+      "date_min": "2026-03-03",
+      "date_max": "2026-03-18",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "西區",
+      "file": "西區_v3.parquet",
+      "rows": 17,
+      "date_min": "2025-09-24",
+      "date_max": "2026-03-14",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "西屯區",
+      "file": "西屯區_v3.parquet",
+      "rows": 37,
+      "date_min": "2025-11-25",
+      "date_max": "2026-03-21",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "豐原區",
+      "file": "豐原區_v3.parquet",
+      "rows": 5,
+      "date_min": "2026-02-04",
+      "date_max": "2026-03-08",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "霧峰區",
+      "file": "霧峰區_v3.parquet",
+      "rows": 2,
+      "date_min": "2025-05-26",
+      "date_max": "2026-01-03",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "龍井區",
+      "file": "龍井區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-02-11",
+      "date_max": "2026-02-11",
+      "tracks": [
+        "Actual"
+      ]
+    }
+  ]
+}

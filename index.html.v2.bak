@@ -1,0 +1,2800 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Taiwan Real Estate — 六都趨勢雷達</title>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- DataTables (vanilla, no Bootstrap skin) -->
+  <link href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:           #080c14;
+      --bg-surface:   #0d1220;
+      --glass-bg:     rgba(13, 18, 32, 0.72);
+      --glass-border: rgba(0, 245, 196, 0.15);
+      --glass-border-hover: rgba(0, 245, 196, 0.45);
+
+      --neon-cyan:    #00f5c4;
+      --neon-red:     #ff2d55;
+      --neon-blue:    #4d9fff;
+      --neon-purple:  #a259ff;
+
+      --text-primary: #e8eaf2;
+      --text-muted:   #5a6480;
+      --text-dim:     #333d55;
+
+      --sidebar-w:    220px;
+      --header-h:     64px;
+
+      /* Cell colouring */
+      --rise-bg:  rgba(255, 45, 85,  0.12);
+      --rise-txt: #ff6b85;
+      --rise-glow: 0 0 8px rgba(255, 45, 85, 0.5);
+      --fall-bg:  rgba(0,  245, 196, 0.10);
+      --fall-txt: #00f5c4;
+      --fall-glow: 0 0 8px rgba(0, 245, 196, 0.45);
+    }
+
+    /* ── Base ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13.5px;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated starfield background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 20% 30%, rgba(0,245,196,.35) 0%, transparent 100%),
+        radial-gradient(1px 1px at 75% 15%, rgba(77,159,255,.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 70%, rgba(162,89,255,.25) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 55%, rgba(255,45,85,.2) 0%, transparent 100%),
+        radial-gradient(600px 600px at 10% 80%, rgba(0,245,196,.04) 0%, transparent 70%),
+        radial-gradient(800px 800px at 85% 10%, rgba(77,159,255,.05) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout shell ──────────────────────────────────────────────────────── */
+    #app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+    /* ── Sidebar ───────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-right: 1px solid var(--glass-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    #sidebar-logo {
+      padding: 1.4rem 1.2rem 1rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    #sidebar-logo .logo-mark {
+      font-size: .65rem;
+      font-weight: 600;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      opacity: .7;
+    }
+    #sidebar-logo h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.3;
+      margin-top: .25rem;
+    }
+
+    #sidebar-status {
+      padding: .75rem 1.2rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    #sidebar-status .label {
+      font-size: .6rem;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    #data-period {
+      font-size: .72rem;
+      color: var(--neon-cyan);
+      margin-top: .2rem;
+      line-height: 1.4;
+    }
+
+    #sidebar-nav {
+      flex: 1;
+      padding: .75rem 0;
+    }
+    #sidebar-nav .nav-section-label {
+      font-size: .6rem;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: .5rem 1.2rem .3rem;
+    }
+
+    .city-btn {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      width: 100%;
+      padding: .6rem 1.2rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: .85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: color .2s, background .2s;
+      text-align: left;
+      position: relative;
+    }
+    .city-btn::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 20%;
+      height: 60%;
+      width: 2px;
+      background: var(--neon-cyan);
+      border-radius: 0 2px 2px 0;
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .city-btn:hover {
+      color: var(--text-primary);
+      background: rgba(0,245,196,.05);
+    }
+    .city-btn.active {
+      color: var(--neon-cyan);
+      background: rgba(0,245,196,.08);
+    }
+    .city-btn.active::before { opacity: 1; }
+
+    .city-btn .city-code {
+      font-size: .6rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      background: rgba(0,245,196,.12);
+      color: var(--neon-cyan);
+      border-radius: 3px;
+      padding: .1em .4em;
+      min-width: 1.6rem;
+      text-align: center;
+    }
+    .city-btn.active .city-code {
+      background: rgba(0,245,196,.22);
+    }
+
+    /* ── District submenu ──────────────────────────────────────────────────── */
+    .district-submenu {
+      display: none;
+      padding: .2rem 0 .4rem 2.3rem;
+      border-left: 1px solid rgba(0,245,196,.12);
+      margin-left: 1.5rem;
+    }
+    .district-submenu.open { display: block; }
+    .district-sub-btn {
+      display: block;
+      width: 100%;
+      padding: .3rem .6rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: .78rem;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: color .15s, background .15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .district-sub-btn:hover {
+      color: var(--text-primary);
+      background: rgba(0,245,196,.06);
+    }
+    .district-sub-btn.active {
+      color: var(--neon-cyan);
+      font-weight: 600;
+    }
+
+    #sidebar-footer {
+      padding: .9rem 1.2rem;
+      border-top: 1px solid var(--glass-border);
+      font-size: .65rem;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    #sidebar-footer a { color: var(--text-muted); text-decoration: none; }
+    #sidebar-footer a:hover { color: var(--neon-cyan); }
+
+    #page-footer {
+      margin-top: 1.25rem;
+      padding: 1rem 1.15rem;
+      border-top: 1px solid rgba(255,255,255,.06);
+      color: var(--text-muted);
+      font-size: .68rem;
+      line-height: 1.7;
+    }
+    #page-footer strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* ── Main content ──────────────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ───────────────────────────────────────────────────────────── */
+    #topbar {
+      height: var(--header-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      border-bottom: 1px solid var(--glass-border);
+      background: rgba(8,12,20,.6);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    #topbar-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    #topbar-title span { color: var(--neon-cyan); }
+
+    #search-wrap {
+      position: relative;
+      flex: 1;
+      max-width: 360px;
+      margin: 0 1rem;
+    }
+    #geo-search {
+      width: 100%;
+      padding: .55rem .85rem;
+      border-radius: 999px;
+      border: 1px solid rgba(0,245,196,.22);
+      background: rgba(255,255,255,.04);
+      color: var(--text-primary);
+      outline: none;
+      font: inherit;
+    }
+    #geo-search::placeholder { color: var(--text-muted); }
+    #geo-search:focus {
+      border-color: rgba(0,245,196,.55);
+      box-shadow: 0 0 0 3px rgba(0,245,196,.08);
+    }
+    #search-results {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + .45rem);
+      background: rgba(8,12,20,.96);
+      border: 1px solid rgba(0,245,196,.2);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 18px 45px rgba(0,0,0,.35);
+      display: none;
+      z-index: 150;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .search-item {
+      display: flex;
+      justify-content: space-between;
+      gap: .75rem;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--text-primary);
+      padding: .75rem .9rem;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .search-item:hover {
+      background: rgba(0,245,196,.07);
+    }
+    .search-item .kind {
+      color: var(--neon-cyan);
+      font-size: .65rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .panel-grid {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr .9fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .panel-stack {
+      display: grid;
+      gap: 1.25rem;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: .75rem;
+      margin-bottom: 1.25rem;
+    }
+    .metric-card {
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: .8rem .85rem;
+      min-height: 78px;
+    }
+    .metric-card .metric-label {
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: var(--text-muted);
+      margin-bottom: .35rem;
+    }
+    .metric-card .metric-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+    .metric-card .metric-note {
+      font-size: .68rem;
+      color: var(--text-muted);
+      margin-top: .3rem;
+      line-height: 1.4;
+    }
+
+    .panel-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: .85rem;
+    }
+    .panel-title-row .eyebrow {
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      color: var(--neon-cyan);
+    }
+    .panel-title-row .hint {
+      font-size: .72rem;
+      color: var(--text-muted);
+    }
+
+    .chart-box {
+      position: relative;
+      height: 280px;
+    }
+    .chart-box.tall { height: 320px; }
+
+    .insight-list {
+      display: grid;
+      gap: .65rem;
+    }
+    .insight-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .65rem .8rem;
+      border-radius: 10px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.05);
+    }
+    .insight-row .label {
+      color: var(--text-primary);
+      font-size: .84rem;
+    }
+    .insight-row .value {
+      color: var(--neon-cyan);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .insight-row .value.tl-red    { color: var(--neon-red); }
+    .insight-row .value.tl-yellow { color: #ffd166; }
+    .insight-row .value.tl-green  { color: var(--neon-cyan); }
+    .insight-row .value.tl-dim    { color: var(--text-muted); }
+    .metric-card.tl-red   { border-color: rgba(255,45,85,.45); }
+    .metric-card.tl-yellow { border-color: rgba(255,209,102,.35); }
+    .metric-card.tl-green  { border-color: rgba(0,245,196,.35); }
+    .metric-card .metric-value.tl-red    { color: var(--neon-red); }
+    .metric-card .metric-value.tl-yellow { color: #ffd166; }
+    .metric-card .metric-value.tl-green  { color: var(--neon-cyan); }
+
+    /* ── Bio-feedback market gauge (top-right) ─────────────────────────────── */
+    #market-gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      flex-shrink: 0;
+    }
+    #market-gauge-wrap canvas { display: block; }
+    #market-gauge-label {
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-top: -.5rem;
+      line-height: 1;
+    }
+    #market-gauge-sub {
+      font-size: .58rem;
+      color: var(--text-muted);
+      margin-top: .15rem;
+    }
+
+    /* ── Panel tabs (A / B / C) ────────────────────────────────────────────── */
+    .panel-tabs {
+      display: flex;
+      gap: .4rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      padding-bottom: .5rem;
+    }
+    .panel-tab-btn {
+      padding: .32rem .85rem;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: .78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .panel-tab-btn:hover {
+      color: var(--text-primary);
+      border-color: rgba(0,245,196,.3);
+    }
+    .panel-tab-btn.active {
+      color: var(--neon-cyan);
+      background: rgba(0,245,196,.1);
+      border-color: rgba(0,245,196,.5);
+    }
+    .panel-pane { display: none; }
+    .panel-pane.active { display: block; }
+
+    /* ── 2×3 mini-card grid (Deep Trends) ─────────────────────────────────── */
+    .mini-card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(3, auto);
+      gap: .55rem;
+    }
+    .mini-card {
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 10px;
+      padding: .6rem .7rem;
+    }
+    .mini-card .mc-label {
+      font-size: .58rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--text-muted);
+      margin-bottom: .2rem;
+    }
+    .mini-card .mc-value {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.2;
+    }
+    .mini-card .mc-sub {
+      font-size: .62rem;
+      color: var(--text-muted);
+      margin-top: .15rem;
+      line-height: 1.3;
+    }
+    .mini-card.tl-red    { border-color: rgba(255,45,85,.35); }
+    .mini-card.tl-yellow { border-color: rgba(255,209,102,.3); }
+    .mini-card.tl-green  { border-color: rgba(0,245,196,.3); }
+    .mini-card .mc-value.tl-red    { color: var(--neon-red); }
+    .mini-card .mc-value.tl-yellow { color: #ffd166; }
+    .mini-card .mc-value.tl-green  { color: var(--neon-cyan); }
+    .mini-card .mc-value.tl-dim    { color: var(--text-muted); }
+
+    /* ── Low-saturation market zone colours ────────────────────────────────── */
+    :root {
+      --zone-safe:    #7bbfa0;   /* pale green  */
+      --zone-caution: #c8a96e;   /* muted amber */
+      --zone-risk:    #b05a5a;   /* brick red   */
+    }
+    .gauge-row {
+      flex-direction: column;
+      align-items: stretch;
+      padding: .55rem .8rem .4rem;
+    }
+    .gauge-row .label { margin-bottom: .3rem; }
+    .gauge-row .gauge-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .gauge-row canvas {
+      display: block;
+    }
+    .gauge-val {
+      font-size: .95rem;
+      font-weight: 700;
+      margin-top: -.4rem;
+      letter-spacing: .02em;
+    }
+    .gauge-val.tl-red    { color: var(--neon-red); }
+    .gauge-val.tl-yellow { color: #ffd166; }
+    .gauge-val.tl-green  { color: var(--neon-cyan); }
+    .gauge-val.tl-dim    { color: var(--text-muted); }
+    .gauge-sub {
+      font-size: .65rem;
+      color: var(--text-muted);
+      margin-top: .1rem;
+    }
+
+    /* ── Market Verdict Banner ──────────────────────────────────────────────── */
+    #market-alert {
+      margin-bottom: .85rem;
+      padding: .65rem 1.1rem;
+      border-radius: 10px;
+      font-size: .82rem;
+      font-weight: 600;
+      letter-spacing: .02em;
+      border: 1px solid;
+      animation: pulse-border 2s ease-in-out infinite;
+    }
+    #market-alert.verdict-red {
+      background: rgba(255,45,85,.1);
+      border-color: rgba(255,45,85,.55);
+      color: #ff6b85;
+    }
+    #market-alert.verdict-yellow {
+      background: rgba(255,209,102,.08);
+      border-color: rgba(255,209,102,.45);
+      color: #ffd166;
+    }
+    #market-alert.verdict-green {
+      background: rgba(0,245,196,.07);
+      border-color: rgba(0,245,196,.35);
+      color: var(--neon-cyan);
+    }
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: none; }
+      50% { box-shadow: 0 0 14px rgba(255,45,85,.22); }
+    }
+    #market-alert.verdict-green { animation: none; }
+
+    #topbar-legend {
+      display: flex;
+      gap: 1.2rem;
+      font-size: .7rem;
+      font-weight: 500;
+    }
+    .legend-item { display: flex; align-items: center; gap: .35rem; }
+    .legend-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+    }
+    .legend-dot.rise { background: var(--neon-red); box-shadow: 0 0 6px var(--neon-red); }
+    .legend-dot.fall { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+    .legend-item.rise { color: var(--rise-txt); }
+    .legend-item.fall { color: var(--fall-txt); }
+
+    /* ── Content area ──────────────────────────────────────────────────────── */
+    #content { flex: 1; padding: 1.5rem; }
+
+    /* ── Glass card ────────────────────────────────────────────────────────── */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      transition: border-color .25s;
+    }
+    .glass-card:hover { border-color: var(--glass-border-hover); }
+
+    /* ── DataTables controls row ───────────────────────────────────────────── */
+    .dt-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-bottom: .75rem;
+    }
+
+    /* ── Section header ────────────────────────────────────────────────────── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .section-title {
+      font-size: .95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .section-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 1em;
+      background: linear-gradient(180deg, var(--neon-cyan), var(--neon-blue));
+      border-radius: 2px;
+    }
+    .section-hint {
+      font-size: .7rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Spinner ───────────────────────────────────────────────────────────── */
+    .spinner-wrap {
+      text-align: center;
+      padding: 3.5rem 1rem;
+      color: var(--text-muted);
+      font-size: .85rem;
+    }
+    .spinner-ring {
+      display: inline-block;
+      width: 36px; height: 36px;
+      border: 3px solid rgba(0,245,196,.15);
+      border-top-color: var(--neon-cyan);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-bottom: .75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Detail panel ──────────────────────────────────────────────────────── */
+    #detail-table-wrap { display: none; margin-top: 1.25rem; }
+    #detail-title {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--neon-cyan);
+      margin-bottom: .75rem;
+      letter-spacing: .02em;
+    }
+
+    /* ── Back button ───────────────────────────────────────────────────────── */
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .35rem .85rem;
+      font-family: inherit;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--neon-cyan);
+      background: rgba(0,245,196,.08);
+      border: 1px solid rgba(0,245,196,.3);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background .2s, border-color .2s;
+      margin-bottom: .9rem;
+    }
+    .back-btn:hover {
+      background: rgba(0,245,196,.15);
+      border-color: rgba(0,245,196,.6);
+    }
+
+    /* ── Error / no-data banner ────────────────────────────────────────────── */
+    .alert-dark {
+      background: rgba(255,45,85,.08);
+      border: 1px solid rgba(255,45,85,.3);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      color: var(--rise-txt);
+      font-size: .82rem;
+      line-height: 1.6;
+    }
+    .alert-dark code {
+      background: rgba(255,255,255,.07);
+      padding: .1em .4em;
+      border-radius: 3px;
+      font-size: .85em;
+    }
+
+    /* ── DataTables dark override ──────────────────────────────────────────── */
+    table.dataTable { border-collapse: collapse !important; width: 100% !important; }
+
+    /* Wrapper */
+    .dataTables_wrapper {
+      color: var(--text-primary);
+      font-size: .82rem;
+    }
+
+    /* Controls row */
+    .dataTables_wrapper .dataTables_length,
+    .dataTables_wrapper .dataTables_filter,
+    .dataTables_wrapper .dataTables_info,
+    .dataTables_wrapper .dataTables_paginate {
+      color: var(--text-muted);
+      padding: .4rem 0;
+    }
+    .dataTables_wrapper .dataTables_filter input,
+    .dataTables_wrapper .dataTables_length select {
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px;
+      color: var(--text-primary);
+      padding: .3rem .6rem;
+      font-family: inherit;
+      font-size: .8rem;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .dataTables_wrapper .dataTables_filter input:focus,
+    .dataTables_wrapper .dataTables_length select:focus {
+      border-color: rgba(0,245,196,.5);
+      box-shadow: 0 0 0 3px rgba(0,245,196,.08);
+    }
+    .dataTables_wrapper .dataTables_filter label,
+    .dataTables_wrapper .dataTables_length label { color: var(--text-muted); }
+
+    /* Pagination */
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+      display: inline-block;
+      padding: .25rem .6rem;
+      border-radius: 5px;
+      cursor: pointer;
+      color: var(--text-muted) !important;
+      font-size: .75rem;
+      background: transparent;
+      border: 1px solid transparent;
+      transition: all .15s;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+      color: var(--neon-cyan) !important;
+      background: rgba(0,245,196,.08) !important;
+      border-color: rgba(0,245,196,.3) !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current,
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+      color: var(--neon-cyan) !important;
+      background: rgba(0,245,196,.14) !important;
+      border-color: rgba(0,245,196,.4) !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover {
+      color: var(--text-dim) !important;
+      background: transparent !important;
+      cursor: default;
+    }
+
+    /* Table header */
+    table.dataTable thead th {
+      background: rgba(0,245,196,.05);
+      border-bottom: 1px solid rgba(0,245,196,.18) !important;
+      color: var(--neon-cyan);
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: .65rem .75rem;
+      white-space: nowrap;
+    }
+    table.dataTable thead th.sorting,
+    table.dataTable thead th.sorting_asc,
+    table.dataTable thead th.sorting_desc { cursor: pointer; }
+    table.dataTable thead th.sorting_asc::after  { content: ' ↑'; opacity: .8; }
+    table.dataTable thead th.sorting_desc::after { content: ' ↓'; opacity: .8; }
+    table.dataTable thead th.sorting::after      { content: ' ⇅'; opacity: .3; font-size: .7em; }
+
+    /* Table body */
+    table.dataTable tbody tr {
+      background: transparent;
+      transition: background .15s;
+    }
+    table.dataTable tbody tr:nth-child(odd)  { background: rgba(255,255,255,.018); }
+    table.dataTable tbody tr:nth-child(even) { background: rgba(255,255,255,.008); }
+    table.dataTable tbody tr:hover td        { background: rgba(0,245,196,.04) !important; }
+
+    table.dataTable tbody td {
+      border-bottom: 1px solid rgba(255,255,255,.04) !important;
+      padding: .55rem .75rem;
+      color: var(--text-primary);
+      vertical-align: middle;
+    }
+
+    /* Remove default DataTables borders */
+    table.dataTable,
+    table.dataTable thead th,
+    table.dataTable tbody td { border-left: none !important; border-right: none !important; }
+    table.dataTable.no-footer { border-bottom: 1px solid rgba(255,255,255,.06) !important; }
+
+    /* ── Conditional cells ─────────────────────────────────────────────────── */
+    .cell-rise {
+      background: var(--rise-bg) !important;
+      color: var(--rise-txt) !important;
+      font-weight: 600;
+      text-shadow: var(--rise-glow);
+    }
+    .cell-fall {
+      background: var(--fall-bg) !important;
+      color: var(--fall-txt) !important;
+      font-weight: 600;
+      text-shadow: var(--fall-glow);
+    }
+
+    /* ── District link ─────────────────────────────────────────────────────── */
+    .district-link {
+      cursor: pointer;
+      color: var(--neon-blue);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(77,159,255,.35);
+      transition: color .15s, border-color .15s, text-shadow .15s;
+    }
+    .district-link:hover {
+      color: var(--neon-cyan);
+      border-color: rgba(0,245,196,.5);
+      text-shadow: 0 0 8px rgba(0,245,196,.5);
+    }
+    /* ── Charts ─────────────────────────────────────────────────────────────── */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .charts-row2 { margin-bottom: 1.25rem; }
+    .chart-wrap  { position: relative; height: 280px; }
+
+    .chart-no-data {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      font-size: .78rem;
+      gap: .5rem;
+      text-align: center;
+      line-height: 1.6;
+    }
+    .chart-no-data .cmd {
+      font-family: monospace;
+      background: rgba(255,255,255,.06);
+      padding: .2em .6em;
+      border-radius: 4px;
+      color: var(--neon-cyan);
+      font-size: .75rem;
+    }
+    /* ── V2 Forecast card ────────────────────────────────────────────────────── */
+    #forecast-card { margin-bottom: 1.25rem; }
+    #forecast-city-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .65rem;
+      margin-bottom: .85rem;
+      align-items: center;
+    }
+    .fc-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .28rem .75rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 600;
+      border: 1px solid;
+    }
+    .fc-pill.oracle  { background: rgba(0,245,196,.10); border-color: rgba(0,245,196,.4); color: var(--neon-cyan); }
+    .fc-pill.premium { background: rgba(162,89,255,.10); border-color: rgba(162,89,255,.4); color: #a259ff; }
+    .fc-pill.temp    { background: rgba(255,209,102,.08); border-color: rgba(255,209,102,.3); color: #ffd166; }
+    .fc-pill.quick   { background: rgba(77,159,255,.10); border-color: rgba(77,159,255,.4); color: var(--neon-blue); }
+    .forecast-district-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: .5rem;
+    }
+    .fdc {
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 9px;
+      padding: .55rem .7rem;
+      transition: border-color .2s;
+    }
+    .fdc:hover { border-color: rgba(0,245,196,.35); }
+    .fdc .fdc-name { font-size: .8rem; font-weight: 600; color: var(--text-primary); margin-bottom: .3rem; }
+    .fdc .fdc-row  { display: flex; justify-content: space-between; font-size: .68rem; color: var(--text-muted); margin-top: .15rem; }
+    .fdc .fdc-val  { color: var(--text-primary); font-weight: 600; }
+    .fdc .tl-red   { color: var(--neon-red); }
+    .fdc .tl-green { color: var(--neon-cyan); }
+    .fdc .tl-yellow{ color: #ffd166; }
+
+    /* ── Histogram card ──────────────────────────────────────────────────────── */
+    #histogram-card { margin-bottom: 1rem; }
+
+    /* ── Mobile hamburger ──────────────────────────────────────────────────── */
+    #menu-toggle {
+      display: none;
+      background: transparent;
+      border: 1px solid rgba(0,245,196,.3);
+      border-radius: 6px;
+      color: var(--neon-cyan);
+      padding: .3rem .55rem;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+
+    /* ── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      :root { --sidebar-w: 100%; }
+
+      #app { flex-direction: column; }
+
+      #sidebar {
+        width: 100%;
+        min-height: unset;
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--glass-border);
+      }
+
+      #sidebar-nav { padding: 0; }
+
+      .city-btn-list {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding: .5rem .75rem;
+        gap: .4rem;
+        scrollbar-width: none;
+      }
+      .city-btn-list::-webkit-scrollbar { display: none; }
+
+      .city-btn {
+        flex-shrink: 0;
+        border-radius: 20px;
+        border: 1px solid rgba(0,245,196,.2);
+        padding: .35rem .85rem;
+        font-size: .78rem;
+        white-space: nowrap;
+      }
+      .city-btn::before { display: none; }
+      .city-btn.active {
+        background: rgba(0,245,196,.12);
+        border-color: rgba(0,245,196,.55);
+      }
+
+      #sidebar-logo, #sidebar-status, #sidebar-footer { display: none; }
+      #sidebar-nav .nav-section-label { display: none; }
+
+      #topbar-legend { display: none; }
+      #topbar { padding: 0 1rem; }
+      #search-wrap { max-width: none; margin: 0 .75rem; }
+
+      #content { padding: .9rem; }
+
+      .glass-card { padding: .9rem; }
+
+      .panel-grid { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .chart-box, .chart-box.tall, .chart-wrap  { height: 220px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div id="sidebar-logo">
+      <div class="logo-mark">Real Estate Radar</div>
+      <h2>六都趨勢<br>監測系統</h2>
+    </div>
+
+    <div id="sidebar-status">
+      <div class="label">Last Updated</div>
+      <div id="data-period">—</div>
+    </div>
+
+    <nav id="sidebar-nav">
+      <div class="nav-section-label">Six Major Cities</div>
+      <div class="city-btn-list" id="city-nav"></div>
+    </nav>
+
+    <div id="sidebar-footer">
+      Source: MOI 內政部<br>實價登錄資料<br>
+      Auto-updated by <a href="https://github.com" target="_blank">GitHub Actions</a>
+    </div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Top bar -->
+    <header id="topbar">
+      <div id="topbar-title">
+        🏙 Taiwan Real Estate &nbsp;<span>六都趨勢雷達</span>
+      </div>
+      <div id="search-wrap">
+        <input id="geo-search" type="search" placeholder="Search city or district..." autocomplete="off" />
+        <div id="search-results"></div>
+      </div>
+      <!-- Bio-feedback gauge -->
+      <div id="market-gauge-wrap" title="Market Health Score (0–5 risk signals)">
+        <canvas id="market-gauge-canvas" width="88" height="48"></canvas>
+        <div id="market-gauge-label" class="tl-dim">—</div>
+        <div id="market-gauge-sub">Market Health</div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div id="content">
+
+      <!-- Market Health Verdict Banner (hidden — replaced by gauge) -->
+      <div id="market-alert" style="display:none" role="alert"></div>
+
+      <!-- 2×3 Mini-Card Grid (Deep Trends) -->
+      <div class="mini-card-grid" id="metric-grid">
+        <div class="mini-card"><div class="mc-label">Current Area</div><div class="mc-value" id="metric-area">—</div><div class="mc-sub" id="metric-area-note">Select a city</div></div>
+        <div class="mini-card"><div class="mc-label">Latest Quarter</div><div class="mc-value" id="metric-quarter">—</div><div class="mc-sub" id="metric-quarter-note">Median price / ping</div></div>
+        <div class="mini-card"><div class="mc-label">Median Price</div><div class="mc-value" id="metric-price">—</div><div class="mc-sub" id="metric-price-note">Trimmed median</div></div>
+        <div class="mini-card"><div class="mc-label">Transactions</div><div class="mc-value" id="metric-count">—</div><div class="mc-sub" id="metric-count-note">Quarter volume</div></div>
+        <div class="mini-card"><div class="mc-label">City Momentum</div><div class="mc-value" id="metric-signal">—</div><div class="mc-sub" id="metric-signal-note">QoQ / YoY avg</div></div>
+        <div class="mini-card"><div class="mc-label">Pre-sale Premium</div><div class="mc-value" id="metric-presale">—</div><div class="mc-sub" id="metric-presale-note">vs. actual market</div></div>
+      </div>
+
+      <!-- V2 Professional Forecast Card -->
+      <div id="forecast-card" class="glass-card" style="display:none;margin-bottom:1.25rem">
+        <div class="panel-title-row">
+          <div>
+            <div class="eyebrow">AI Oracle · v2</div>
+            <div class="section-title" id="forecast-card-title">Professional Forecast 市場預測</div>
+          </div>
+          <div class="hint">Rule-based momentum (60% actual slope + 40% presale) · updates daily</div>
+        </div>
+        <div id="forecast-city-bar"></div>
+        <div id="forecast-district-grid" class="forecast-district-grid"></div>
+      </div>
+
+      <div class="panel-grid">
+        <div class="glass-card chart-card">
+          <div class="panel-title-row">
+            <div>
+              <div class="eyebrow">Left Panel</div>
+              <div class="section-title" id="trend-chart-title">Market Momentum</div>
+            </div>
+            <div class="hint">12-month curve with hover project names</div>
+          </div>
+          <div class="chart-box tall"><canvas id="chart-trend"></canvas></div>
+        </div>
+        <div class="panel-stack">
+          <div class="glass-card chart-card">
+            <div class="panel-title-row">
+              <div>
+                <div class="eyebrow">Price Anchors</div>
+                <div class="section-title">District Benchmark</div>
+              </div>
+              <div class="hint">Top 10 districts by current median price</div>
+            </div>
+            <div class="chart-box"><canvas id="chart-top10"></canvas></div>
+          </div>
+        <div class="glass-card chart-card">
+          <div class="panel-title-row">
+            <div>
+              <div class="eyebrow">Deep Trends</div>
+              <div class="section-title">Signals</div>
+            </div>
+            <div class="hint">Market health indicators</div>
+          </div>
+          <div class="insight-list" id="insight-list"></div>
+        </div>
+        </div>
+        <div class="glass-card chart-card">
+          <div class="panel-title-row">
+            <div>
+              <div class="eyebrow">Volume Trend</div>
+              <div class="section-title">Volume &amp; Price</div>
+            </div>
+            <div class="hint">Quarterly transaction volume vs. median price</div>
+          </div>
+          <div class="chart-box tall"><canvas id="chart-combo"></canvas></div>
+        </div>
+      </div>
+
+      <!-- No-data chart banner (shown when timeseries.json is missing) -->
+      <div id="charts-no-data" style="display:none" class="glass-card" style="margin-bottom:1.25rem">
+        <div class="chart-no-data">
+          ⚡ Charts require historical data. Run:
+          <span class="cmd">python main.py --backfill</span>
+          to generate deeper history, then refresh.
+        </div>
+      </div>
+
+      <!-- Panel tabs: A (Existing) / B (Pre-sale) / C (Trends) -->
+      <div class="glass-card" id="panels-card">
+        <div class="panel-tabs">
+          <button class="panel-tab-btn active" data-panel="A">
+            🏠 Panel A — Existing Homes 成屋
+          </button>
+          <button class="panel-tab-btn" data-panel="B">
+            📋 Panel B — Pre-sale 預售屋
+          </button>
+          <button class="panel-tab-btn" data-panel="C">
+            📈 Panel C — District Trends 趨勢
+          </button>
+        </div>
+
+        <!-- Panel A -->
+        <div class="panel-pane active" id="pane-A">
+          <div class="section-header">
+            <div class="section-title" id="summary-title">Existing Home Transactions</div>
+            <div class="section-hint">Click a district name to filter · sorted by newest date</div>
+          </div>
+          <!-- V2 Price Histogram -->
+          <div id="histogram-card" class="glass-card" style="display:none;margin-bottom:1rem">
+            <div class="panel-title-row" style="margin-bottom:.5rem">
+              <div class="eyebrow">Unit Price Distribution</div>
+              <div class="section-title" id="histogram-title" style="font-size:.82rem">Price Histogram</div>
+            </div>
+            <div style="position:relative;height:160px"><canvas id="chart-histogram"></canvas></div>
+          </div>
+          <div id="city-tab-content">
+            <div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading…</div>
+          </div>
+        </div>
+
+        <!-- Panel B -->
+        <div class="panel-pane" id="pane-B">
+          <div class="section-header">
+            <div class="section-title" id="presale-title">Pre-sale Transactions 預售屋</div>
+            <div class="section-hint">Sorted by newest contract date</div>
+          </div>
+          <div id="presale-tab-content">
+            <div class="spinner-wrap"><div class="spinner-ring"></div><br>Select a city or district to load pre-sale data.</div>
+          </div>
+        </div>
+
+        <!-- Panel C -->
+        <div class="panel-pane" id="pane-C">
+          <div class="section-header">
+            <div class="section-title">District Trend Summary 行政區趨勢</div>
+            <div class="section-hint">Quarterly median · QoQ · YoY · Sparkline</div>
+          </div>
+          <div id="trend-tab-content">
+            <div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail drill-down (Panel A district detail) -->
+      <div id="detail-table-wrap">
+        <button class="back-btn" id="back-btn">← Back to Summary</button>
+        <div class="section-title" id="detail-title" style="margin-bottom:.75rem"></div>
+        <div class="glass-card">
+          <table id="detail-table" class="dataTable no-footer" style="width:100%">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="page-footer">
+        <strong>Data Update Frequency &amp; Source Reference:</strong><br>
+        Actual Price Registration: released in batches on the 1st, 11th, and 21st of every month.<br>
+        Pre-sale Transactions: synced to the same cycle, with contracts filed within 30 days and appearing in the nearest 10-day release.<br>
+        Pre-sale Project Filings: aperiodic; updates appear when developers file and approvals are published by local governments.<br>
+        <span id="footer-last-sync" style="color:var(--neon-cyan)"></span>
+      </div>
+
+    </div><!-- /content -->
+
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<script>
+/* ── Utility ────────────────────────────────────────────────────────────── */
+
+/** Parse a CSV URL and return Promise<array of objects> */
+function loadCSV(url) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(url, {
+      download:       true,
+      header:         true,
+      skipEmptyLines: true,
+      complete: r => resolve(r.data),
+      error:    e => reject(e),
+    });
+  });
+}
+
+/** Format a number with 2 decimal places, or '—' if missing. */
+function fmt(v, decimals = 2) {
+  const n = parseFloat(v);
+  return isNaN(n) ? '—' : n.toFixed(decimals);
+}
+
+/** Build a CSS class for a growth-rate cell. */
+function growthClass(v) {
+  const n = parseFloat(v);
+  if (isNaN(n) || n === 0) return '';
+  return n > 0 ? 'cell-rise' : 'cell-fall';
+}
+
+/** Format a growth percentage with sign, or '—'. */
+function fmtPct(v) {
+  const n = parseFloat(v);
+  if (isNaN(n)) return '—';
+  return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+
+/* ── Globals ─────────────────────────────────────────────────────────────── */
+
+let manifest = null;
+let summaryDT = null;    // active DataTables instance for summary
+let detailDT  = null;    // active DataTables instance for detail
+let activeCity = null;   // currently selected city folder name
+
+/* ── Chart globals ──────────────────────────────────────────────────────────── */
+let chartTrend = null;
+let chartTop10 = null;
+let chartCombo = null;
+let currentTimeseries = null;
+let currentPresaleTimeseries = null;
+let currentCityCode = null;
+let currentSummaryRows = [];
+let geoIndex = [];
+const MIN_SAMPLE_JS  = 5;
+const CHART_FONT     = { family: 'Inter, system-ui, sans-serif' };
+const CHART_GRID     = 'rgba(255,255,255,0.06)';
+const TOOLTIP_STYLE  = {
+  backgroundColor: 'rgba(8,12,20,0.95)',
+  borderWidth: 1,
+  titleFont:  { ...CHART_FONT, weight: '600' },
+  bodyFont:   CHART_FONT,
+  padding: 10,
+};
+
+function quarterKey(q) {
+  const match = String(q || '').match(/^(\d{4})Q([1-4])$/);
+  if (!match) return 0;
+  return Number(match[1]) * 4 + Number(match[2]);
+}
+
+function latestNonNull(series) {
+  for (let i = series.length - 1; i >= 0; i -= 1) {
+    if (series[i] != null && series[i] !== '') return series[i];
+  }
+  return null;
+}
+
+function buildGeoIndex(mf) {
+  geoIndex = [];
+  CITY_ORDER.forEach((code) => {
+    const city = mf.cities[code];
+    (city.districts || []).forEach((district) => {
+      geoIndex.push({
+        type: 'district',
+        code,
+        cityName: city.name,
+        folder: city.folder,
+        label: district,
+        search: `${city.name} ${district}`.toLowerCase(),
+      });
+    });
+    geoIndex.push({
+      type: 'city',
+      code,
+      cityName: city.name,
+      folder: city.folder,
+      label: city.name,
+      search: city.name.toLowerCase(),
+    });
+  });
+}
+
+function renderSearchResults(query) {
+  const q = String(query || '').trim().toLowerCase();
+  const box = $('#search-results');
+  if (!q) {
+    box.hide().empty();
+    return;
+  }
+  const matches = geoIndex.filter((item) => item.search.includes(q)).slice(0, 8);
+  if (!matches.length) {
+    box.html('<div class="search-item"><span>No matches</span><span class="kind">Search</span></div>').show();
+    return;
+  }
+  box.html(matches.map((item) => `
+    <button class="search-item" data-code="${item.code}" data-type="${item.type}" data-label="${item.label}">
+      <span>${item.label}</span>
+      <span class="kind">${item.type === 'city' ? 'City' : 'District'}</span>
+    </button>
+  `).join('')).show();
+}
+
+/* ── Gauge helper ─────────────────────────────────────────────────────────── */
+
+/**
+ * Render (or update) a semicircular half-doughnut gauge using Chart.js.
+ * @param {string} id       - canvas element id
+ * @param {number} value    - current value
+ * @param {number} max      - scale maximum
+ * @param {string} colorCls - 'tl-red' | 'tl-yellow' | 'tl-green' | 'tl-dim'
+ */
+function renderGauge(id, value, max, colorCls) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return null;
+  const fill  = Math.min(Math.max(value, 0), max);
+  const empty = max - fill;
+  const colMap = {
+    'tl-red':    '#ff2d55',
+    'tl-yellow': '#ffd166',
+    'tl-green':  '#00f5c4',
+    'tl-dim':    '#5a6480',
+  };
+  const col = colMap[colorCls] || colMap['tl-dim'];
+
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  return new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [fill, empty],
+        backgroundColor: [col, 'rgba(255,255,255,0.06)'],
+        borderWidth: 0,
+        hoverOffset: 0,
+      }],
+    },
+    options: {
+      cutout: '72%',
+      rotation: -Math.PI / 2,
+      circumference: Math.PI,
+      responsive: false,
+      animation: { duration: 500 },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
+  });
+}
+
+function tlClass(yoy) {
+  if (isNaN(yoy)) return 'tl-dim';
+  if (Math.abs(yoy) > 15) return 'tl-red';
+  if (Math.abs(yoy) > 5)  return 'tl-yellow';
+  return 'tl-green';
+}
+
+function updateInsightRows(rows, pts) {
+  const $list = $('#insight-list');
+  if (!rows.length) { $list.html(''); return; }
+
+  // Latest-quarter per district
+  const latest = rows.reduce((acc, row) => {
+    const key = row.District;
+    if (!acc[key] || quarterKey(row.Quarter) > quarterKey(acc[key].Quarter)) acc[key] = row;
+    return acc;
+  }, {});
+
+  const latestRows = Object.values(latest).filter(r =>
+    parseInt(r.TransactionCount, 10) >= MIN_SAMPLE_JS
+  );
+
+  const byYoY = latestRows
+    .filter(r => r.YoY_pct !== '' && r.YoY_pct != null && !isNaN(parseFloat(r.YoY_pct)))
+    .sort((a, b) => parseFloat(b.YoY_pct) - parseFloat(a.YoY_pct));
+
+  const hotRow  = byYoY[0] || null;
+  const coolRow = byYoY[byYoY.length - 1] || null;
+
+  const hotYoY  = hotRow  ? parseFloat(hotRow.YoY_pct)  : NaN;
+  const coolYoY = coolRow ? parseFloat(coolRow.YoY_pct) : NaN;
+
+  const risingCount  = latestRows.filter(r => parseFloat(r.YoY_pct) > 0).length;
+  const fallingCount = latestRows.filter(r => parseFloat(r.YoY_pct) < 0).length;
+  const lowN = Object.values(latest).filter(r => parseInt(r.TransactionCount, 10) < MIN_SAMPLE_JS).length;
+
+  const hotLabel  = hotRow  ? hotRow.District  : '—';
+  const coolLabel = coolRow ? coolRow.District : '—';
+  const hotVal    = isNaN(hotYoY)  ? '—' : (hotYoY  > 0 ? '+' : '') + hotYoY.toFixed(1)  + '%';
+  const coolVal   = isNaN(coolYoY) ? '—' : (coolYoY > 0 ? '+' : '') + coolYoY.toFixed(1) + '%';
+  const momentum  = risingCount > fallingCount ? '↑ Heating' : risingCount < fallingCount ? '↓ Cooling' : '→ Flat';
+  const momentumClass = risingCount > fallingCount ? 'tl-red' : risingCount < fallingCount ? 'tl-green' : 'tl-dim';
+
+  // ── Compute gauge values ─────────────────────────────────────────────────
+  let gapValue = null, gapCls = 'tl-dim', gapTxt = '—', gapSub = 'No presale data';
+  let absValue = null, absCls = 'tl-dim', absTxt = '—', absSub = 'No presale data';
+
+  if (pts && pts.city_median && pts.quarters && currentTimeseries) {
+    const actQ  = latestNonNull(currentTimeseries.quarters);
+    const ptIdx = pts.quarters.lastIndexOf(actQ);
+    const acIdx = currentTimeseries.quarters.lastIndexOf(actQ);
+    const presalePrice = ptIdx >= 0 ? pts.city_median[ptIdx] : latestNonNull(pts.city_median);
+    const actualPrice  = acIdx >= 0 ? currentTimeseries.city_median[acIdx] : latestNonNull(currentTimeseries.city_median);
+
+    if (presalePrice != null && actualPrice != null && actualPrice > 0) {
+      const gap = (presalePrice - actualPrice) / actualPrice * 100;
+      gapValue = gap;
+      gapTxt = (gap >= 0 ? '+' : '') + gap.toFixed(1) + '%';
+      gapCls  = gap > 20 ? 'tl-red' : gap > 5 ? 'tl-yellow' : 'tl-green';
+      gapSub  = `${presalePrice.toFixed(0)} vs ${actualPrice.toFixed(0)} 萬`;
+    }
+
+    const presaleVol = ptIdx >= 0 ? pts.city_volume[ptIdx] : latestNonNull(pts.city_volume);
+    const actualVol  = acIdx >= 0 ? currentTimeseries.city_volume[acIdx] : latestNonNull(currentTimeseries.city_volume);
+    if (presaleVol != null && actualVol != null && actualVol > 0) {
+      const ratio = presaleVol / actualVol * 100;
+      absValue = ratio;
+      absTxt   = ratio.toFixed(0) + '%';
+      absCls   = ratio > 80 ? 'tl-red' : ratio > 40 ? 'tl-yellow' : 'tl-green';
+      absSub   = `${presaleVol} vs ${actualVol} 件`;
+    }
+  }
+
+  // ── Render HTML (gauges use fixed-size canvases, drawn after DOM insert) ─
+  $list.html(`
+    <div class="insight-row gauge-row" id="row-premium">
+      <span class="label">⚖️ Pre-sale Premium Gap <small style="font-size:.65rem;color:var(--text-muted)">(0–50% scale)</small></span>
+      <div class="gauge-wrap">
+        <canvas id="gauge-premium" width="110" height="60"></canvas>
+        <div class="gauge-val ${gapCls}">${gapTxt}</div>
+        <div class="gauge-sub">${gapSub}</div>
+      </div>
+    </div>
+    <div class="insight-row gauge-row" id="row-absorption">
+      <span class="label">📦 Absorption Rate <small style="font-size:.65rem;color:var(--text-muted)">(0–100% scale)</small></span>
+      <div class="gauge-wrap">
+        <canvas id="gauge-absorption" width="110" height="60"></canvas>
+        <div class="gauge-val ${absCls}">${absTxt}</div>
+        <div class="gauge-sub">${absSub}</div>
+      </div>
+    </div>
+    <div class="insight-row">
+      <span class="label">🔥 Hottest District</span>
+      <span class="value ${tlClass(hotYoY)}">${hotLabel} ${hotVal}</span>
+    </div>
+    <div class="insight-row">
+      <span class="label">🧊 Coolest District</span>
+      <span class="value ${tlClass(coolYoY)}">${coolLabel} ${coolVal}</span>
+    </div>
+    <div class="insight-row">
+      <span class="label">📈 City Momentum</span>
+      <span class="value ${momentumClass}">${momentum} &nbsp;<small style="font-weight:400">${risingCount}↑ ${fallingCount}↓</small></span>
+    </div>
+    <div class="insight-row">
+      <span class="label">⚠️ Low-confidence Districts</span>
+      <span class="value ${lowN > 0 ? 'tl-yellow' : 'tl-green'}">${lowN} (N&lt;${MIN_SAMPLE_JS})</span>
+    </div>
+  `);
+
+  // ── Draw gauges after DOM is ready ───────────────────────────────────────
+  renderGauge('gauge-premium',    gapValue != null ? Math.min(gapValue, 50) : 0, 50,  gapCls);
+  renderGauge('gauge-absorption', absValue != null ? Math.min(absValue, 100) : 0, 100, absCls);
+
+  // ── Risk score → Bio-feedback gauge in topbar ────────────────────────────
+  let redCount = 0;
+  if (gapValue  != null && gapValue  > 20) redCount++;
+  if (absValue  != null && absValue  > 80) redCount++;
+  if (risingCount > fallingCount)          redCount++;
+  if (!isNaN(hotYoY) && hotYoY > 15)      redCount++;
+  if (lowN > 0)                            redCount++;
+  updateMarketGauge(redCount);
+
+  // ── Phase B: Linked hover — Premium Gap gauge → trend chart gap-fill ─────
+  const $rowPremium = $('#row-premium');
+  $rowPremium.css('cursor', 'pointer')
+    .on('mouseenter', () => {
+      if (!chartTrend) return;
+      const ds = chartTrend.data.datasets;
+      if (ds.length >= 2) {
+        ds[1].backgroundColor = 'rgba(162,89,255,0.22)';
+        ds[1].fill = { target: 0, above: 'rgba(162,89,255,0.18)', below: 'rgba(0,245,196,0.12)' };
+        chartTrend.update('none');
+      }
+    })
+    .on('mouseleave', () => {
+      if (!chartTrend) return;
+      const ds = chartTrend.data.datasets;
+      if (ds.length >= 2) {
+        ds[1].backgroundColor = 'transparent';
+        ds[1].fill = false;
+        chartTrend.update('none');
+      }
+    });
+
+  const $rowAbsorption = $('#row-absorption');
+  $rowAbsorption.css('cursor', 'pointer')
+    .on('mouseenter', () => {
+      if (!chartCombo) return;
+      const ds = chartCombo.data.datasets;
+      if (ds.length >= 3) {
+        ds[2].backgroundColor = 'rgba(162,89,255,0.55)';
+        ds[2].borderColor     = 'rgba(162,89,255,0.95)';
+        ds[2].borderWidth     = 2;
+        chartCombo.update('none');
+      }
+    })
+    .on('mouseleave', () => {
+      if (!chartCombo) return;
+      const ds = chartCombo.data.datasets;
+      if (ds.length >= 3) {
+        ds[2].backgroundColor = 'rgba(162,89,255,0.28)';
+        ds[2].borderColor     = 'rgba(162,89,255,0.65)';
+        ds[2].borderWidth     = 1;
+        chartCombo.update('none');
+      }
+    });
+}
+
+/* ── Bio-feedback gauge (topbar) ─────────────────────────────────────────── */
+
+let _marketGaugeChart = null;
+
+function updateMarketGauge(redCount) {
+  const score = Math.min(redCount, 5);
+  const zoneMap = {
+    0: { cls: 'tl-green',  col: 'var(--zone-safe)',    label: 'Stable',   },
+    1: { cls: 'tl-green',  col: 'var(--zone-safe)',    label: 'Stable',   },
+    2: { cls: 'tl-yellow', col: 'var(--zone-caution)', label: 'Caution',  },
+    3: { cls: 'tl-yellow', col: 'var(--zone-caution)', label: 'Caution',  },
+    4: { cls: 'tl-red',    col: 'var(--zone-risk)',     label: 'Elevated', },
+    5: { cls: 'tl-red',    col: 'var(--zone-risk)',     label: 'Hot',      },
+  };
+  const { cls, col, label } = zoneMap[score];
+
+  const canvas = document.getElementById('market-gauge-canvas');
+  if (!canvas) return;
+  if (_marketGaugeChart) _marketGaugeChart.destroy();
+
+  // Resolve CSS variable colour to a concrete hex for Chart.js
+  const resolved = getComputedStyle(document.documentElement)
+    .getPropertyValue(col.replace('var(', '').replace(')', '').trim()).trim()
+    || (cls === 'tl-green' ? '#7bbfa0' : cls === 'tl-yellow' ? '#c8a96e' : '#b05a5a');
+
+  _marketGaugeChart = new Chart(canvas.getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [score, 5 - score],
+        backgroundColor: [resolved, 'rgba(255,255,255,0.06)'],
+        borderWidth: 0,
+        hoverOffset: 0,
+      }],
+    },
+    options: {
+      cutout: '68%',
+      rotation: -Math.PI / 2,
+      circumference: Math.PI,
+      responsive: false,
+      animation: { duration: 400 },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    },
+  });
+
+  const $label = $('#market-gauge-label');
+  $label.removeClass('tl-red tl-yellow tl-green tl-dim').addClass(cls).text(label);
+  $('#market-gauge-sub').text(`${score}/5 risk signals`);
+}
+
+function updateMetricCards(city, ts, rows, pts) {
+  const lastQuarter = latestNonNull(ts.quarters || []);
+  const latestPrice = latestNonNull(ts.city_median || []);
+  const latestCount = latestNonNull(ts.city_volume || []);
+
+  // Latest quarter per district for city-level signal
+  const latestPerDistrict = rows.reduce((acc, row) => {
+    if (!acc[row.District] || quarterKey(row.Quarter) > quarterKey(acc[row.District].Quarter))
+      acc[row.District] = row;
+    return acc;
+  }, {});
+  const distRows = Object.values(latestPerDistrict).filter(r =>
+    parseInt(r.TransactionCount, 10) >= MIN_SAMPLE_JS
+  );
+  const avgYoY = distRows.reduce((s, r) => s + (parseFloat(r.YoY_pct) || 0), 0) / (distRows.length || 1);
+  const avgQoQ = distRows.reduce((s, r) => s + (parseFloat(r.QoQ_pct) || 0), 0) / (distRows.length || 1);
+  const signalTxt = distRows.length
+    ? `YoY ${avgYoY >= 0 ? '+' : ''}${avgYoY.toFixed(1)}%`
+    : '—';
+  const signalClass = tlClass(avgYoY);
+
+  // Presale price for metric card
+  let presaleLabel = '—';
+  let presaleNote  = 'Presale data not available';
+  if (pts && pts.city_median) {
+    const pv = latestNonNull(pts.city_median);
+    if (pv != null) {
+      presaleLabel = `${fmt(pv)} 萬`;
+      presaleNote  = `${latestNonNull(pts.quarters) || ''} presale median`;
+    }
+  }
+
+  $('#metric-area').text(city ? city.name : '—');
+  $('#metric-area-note').text(city ? `${Object.keys(latestPerDistrict).length} districts loaded` : 'Select a city');
+  $('#metric-quarter').text(lastQuarter || '—');
+  $('#metric-price').text(latestPrice != null ? `${fmt(latestPrice)} 萬` : '—');
+  $('#metric-count').text(latestCount != null ? `${fmt(latestCount, 0)} 件` : '—');
+  $('#metric-signal').text(signalTxt);
+  $('#metric-presale').text(presaleLabel);
+  $('#metric-quarter-note').text(presaleLabel !== '—' ? `Pre-sale: ${presaleLabel}` : 'City-wide median price/ping');
+  $('#metric-price-note').text('Trimmed median (excl. top/bottom 5%)');
+  $('#metric-count-note').text(city ? 'City-wide quarter volume' : 'No data loaded');
+  $('#metric-signal-note').text(`QoQ avg ${avgQoQ >= 0 ? '+' : ''}${avgQoQ.toFixed(1)}%`);
+  $('#metric-presale-note').text(presaleNote);
+
+  // Traffic-light on signal mini-card
+  const $signalCard = $('#metric-signal').closest('.mini-card');
+  $signalCard.removeClass('tl-red tl-yellow tl-green');
+  $('#metric-signal').removeClass('tl-red tl-yellow tl-green tl-dim');
+  if (distRows.length) {
+    $signalCard.addClass(signalClass);
+    $('#metric-signal').addClass(signalClass);
+  }
+}
+
+/* ── Sparkline helper ────────────────────────────────────────────────────── */
+
+/**
+ * Build a tiny SVG polyline from an array of values.
+ * Returns an <svg> string 56×24 px showing the district price trend.
+ */
+function sparklineSVG(values, isRising) {
+  const pts = values.filter(v => v != null && !isNaN(v));
+  if (pts.length < 2) return '<span style="color:#333d55;font-size:.65rem">—</span>';
+  const W = 56, H = 20;
+  const mn = Math.min(...pts), mx = Math.max(...pts);
+  const range = mx - mn || 1;
+  const coords = pts.map((v, i) => {
+    const x = (i / (pts.length - 1)) * W;
+    const y = H - ((v - mn) / range) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const col = isRising ? '#ff6b85' : '#00f5c4';
+  return `<svg width="${W}" height="${H + 4}" viewBox="0 0 ${W} ${H + 4}" style="display:inline-block;vertical-align:middle">
+    <polyline points="${coords}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+/* ── Summary table ──────────────────────────────────────────────────────── */
+
+function buildSummaryColumns(sample) {
+  /* Detect which growth columns exist in the data */
+  const keys   = Object.keys(sample || {});
+  const hasQoQ = keys.includes('QoQ_pct');
+  const hasYoY = keys.includes('YoY_pct');
+  const hasOracle = keys.includes('OracleNextMedian');
+  const hasResilience = keys.includes('ResilienceScore');
+  const hasLeverage = keys.includes('ConfidenceLeveragePct');
+  const hasTemp = keys.includes('MarketTemp');
+  const hasShortTerm = keys.includes('ShortTermRatioPct');
+
+  const cols = [
+    {
+      title: 'District 行政區',
+      data:  'District',
+      render: (d) =>
+        `<span class="district-link" data-district="${encodeURIComponent(d)}">${d}</span>`,
+    },
+    { title: 'Quarter 季度',         data: 'Quarter' },
+    {
+      title: 'Median Price/Ping<br><small>萬/嵪 (中位數)</small>',
+      data:  'MedianPricePerPing',
+      render: d => fmt(d),
+    },
+    {
+      title: 'Transactions<br><small>成交件數</small>',
+      data:  'TransactionCount',
+      render: d => fmt(d, 0),
+    },
+  ];
+
+  if (hasQoQ) {
+    cols.push({
+      title: 'QoQ 季增率',
+      data:  'QoQ_pct',
+      render: d => fmtPct(d),
+      createdCell(td, cellData) {
+        const cls = growthClass(cellData);
+        if (cls) $(td).addClass(cls);
+      },
+    });
+  }
+  if (hasYoY) {
+    cols.push({
+      title: 'YoY 年增率',
+      data:  'YoY_pct',
+      render: d => fmtPct(d),
+      createdCell(td, cellData) {
+        const cls = growthClass(cellData);
+        if (cls) $(td).addClass(cls);
+      },
+    });
+  }
+
+  if (hasOracle) {
+    cols.push({
+      title: 'Oracle 預測',
+      data: 'OracleNextMedian',
+      render: (d, _, row) => {
+        if (d == null || d === '') return '—';
+        const trend = row.OracleTrend || '→';
+        return `${fmt(d)} ${trend}`;
+      },
+    });
+  }
+
+  if (hasResilience) {
+    cols.push({
+      title: 'Resilience',
+      data: 'ResilienceScore',
+      render: d => d == null ? '—' : `${fmt(d, 1)}`,
+    });
+  }
+
+  if (hasLeverage) {
+    cols.push({
+      title: 'Leverage',
+      data: 'ConfidenceLeveragePct',
+      render: d => d == null ? '—' : `${fmt(d, 1)}%`,
+    });
+  }
+
+  if (hasTemp) {
+    cols.push({
+      title: 'Market Temp',
+      data: 'MarketTemp',
+      render: d => d || '—',
+    });
+  }
+
+  if (hasShortTerm) {
+    cols.push({
+      title: 'Short-term %',
+      data: 'ShortTermRatioPct',
+      render: d => d == null ? '—' : `${fmt(d, 1)}%`,
+      createdCell(td, cellData) {
+        const cls = parseFloat(cellData) > 30 ? 'cell-rise' : '';
+        if (cls) $(td).addClass(cls);
+      },
+    });
+  }
+
+  // Sparkline column — populated after table init via drawCallback
+  cols.push({
+    title: 'Trend 走勢',
+    data:  'District',
+    orderable: false,
+    render: () => '<span class="spark-placeholder">…</span>',
+  });
+
+  return cols;
+}
+
+async function loadSummary(cityCode) {
+  const city = manifest.cities[cityCode];
+  activeCity = city.folder;
+  currentCityCode = cityCode;
+
+  // Update sidebar active state & close all district submenus except this city
+  $('.city-btn').removeClass('active');
+  $(`.city-btn[data-city-code="${cityCode}"]`).addClass('active');
+  $('.district-submenu').not(`#sub-${cityCode}`).removeClass('open');
+  $(`#sub-${cityCode}`).addClass('open');
+  $('.district-sub-btn').removeClass('active');
+
+  // Update section title
+  $('#summary-title').text(`${city.name} — Existing Home Transactions 成屋`);
+
+  // Load charts
+  await updateCharts(cityCode);
+
+  const wrap = $('#city-tab-content');
+  wrap.html(`<div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading ${city.name}…</div>`);
+
+  if (summaryDT) { summaryDT.destroy(); summaryDT = null; }
+
+  let rows;
+  try {
+    const resp = await fetch(`/api/${cityCode}/leaderboard?page=1&page_size=200&sort_by=ResilienceScore&sort_dir=desc`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = await resp.json();
+    rows = payload.items || [];
+  } catch (e) {
+    wrap.html(`<div class="alert-dark">No data for ${city.name}. Run <code>python main.py</code> first, then refresh.</div>`);
+    return;
+  }
+  if (!rows.length) {
+    wrap.html(`<div class="alert-dark">Summary file is empty for ${city.name}.</div>`);
+    return;
+  }
+
+  currentSummaryRows = rows;
+  updateInsightRows(rows, currentPresaleTimeseries);
+
+  const tableId = `tbl-${city.folder}`;
+  wrap.html(`
+    <table id="${tableId}" style="width:100%"></table>
+    <p style="margin-top:.6rem;font-size:.7rem;color:var(--text-muted)">
+      Click a district name to drill into transaction details.
+    </p>
+  `);
+
+  const cols = buildSummaryColumns(rows[0]);
+  summaryDT = $(`#${tableId}`).DataTable({
+    data:      rows,
+    columns:   cols,
+    order:     [[1, 'desc'], [0, 'asc']],
+    pageLength: 25,
+    dom: '<"dt-controls"lf>rtp',
+    language: { search: '🔍', searchPlaceholder: 'Search district…', lengthMenu: 'Show _MENU_' },
+    drawCallback() {
+      const ts = currentTimeseries;
+      if (!ts || !ts.districts) return;
+      $(`#${tableId} tbody tr`).each(function () {
+        const $row = $(this);
+        const districtText = $row.find('.district-link').text();
+        if (!districtText) return;
+        const series = ts.districts[districtText];
+        if (!series || series.length < 2) return;
+        const vals = ts.quarters.map((_, i) => series[i]);
+        const nonNull = vals.filter(v => v != null);
+        const isRising = nonNull.length >= 2 && nonNull[nonNull.length - 1] > nonNull[0];
+        $row.find('.spark-placeholder').replaceWith(sparklineSVG(vals, isRising));
+      });
+    },
+  });
+
+  updateMetricCards(city, currentTimeseries || {}, rows, currentPresaleTimeseries);
+
+  // Hydrate Panel B and C with city-level data
+  loadPresaleDetail(city.folder, null);
+  loadPanelC(city.folder);
+}
+
+/* ── Panel A — Existing Home columns ──────────────────────────────────── */
+
+function buildDetailColumns(sample) {
+  const spec = [
+    { key: 'Address',            title: 'Address 地址' },
+    { key: 'Community',          title: 'Community 社區/街道' },
+    { key: 'Date',               title: 'Date 交易日期' },
+    { key: 'PricePerPing',       title: 'Unit Price 萬/坪', fmt: true },
+    { key: 'TotalPrice_10kTWD',  title: 'Total Price 總價(萬)', fmt: true },
+    { key: 'TotalFloorArea_Ping', title: 'Area 面積(坪)', fmt: true },
+    { key: 'BuildingType',       title: 'Type 建物型態' },
+    { key: 'BuildingAge',        title: 'Age 屋齡(年)' },
+    { key: 'Floor',              title: 'Floor 樓層' },
+    { key: 'ParkingStatus',      title: 'Parking 車位' },
+    { key: 'DOM_Proxy',          title: 'DOM 持有(月)' },
+    { key: 'DOM_Tag',            title: '⚠️ Risk' },
+    { key: 'District',           title: 'District 行政區' },
+    { key: 'Quarter',            title: 'Quarter 季度' },
+    { key: 'Status',             title: 'Status 狀態' },
+  ];
+  return spec
+    .filter(({ key }) => key in (sample || {}))
+    .map(({ key, title, fmt: doFmt }) => ({
+      title,
+      data: key,
+      render: doFmt
+        ? d => fmt(d)
+        : d => (d == null || d === '' ? '—' : d),
+    }));
+}
+
+/* ── Panel B — Pre-sale columns ──────────────────────────────────────── */
+
+function buildPresaleColumns(sample) {
+  const spec = [
+    { key: 'ProjectName',      title: '🏗 Project 建案' },
+    { key: 'District',         title: 'District 行政區' },
+    { key: 'Date',             title: 'Date 契約日期' },
+    { key: 'PricePerPing',     title: 'Unit Price 萬/坪', fmt: true },
+    { key: 'TotalPrice_10kTWD', title: 'Total Price 總價(萬)', fmt: true },
+    { key: 'ParkingStatus',    title: 'Parking 車位' },
+    { key: 'Floor',            title: 'Floor 樓層' },
+    { key: 'TotalFloors',      title: 'Total Floors 總樓' },
+    { key: 'Quarter',          title: 'Quarter 季度' },
+  ];
+  return spec
+    .filter(({ key }) => key in (sample || {}))
+    .map(({ key, title, fmt: doFmt }) => ({
+      title,
+      data: key,
+      render: doFmt
+        ? d => fmt(d)
+        : d => (d == null || d === '' ? '—' : d),
+    }));
+}
+
+let presaleDT  = null;
+let trendTabDT = null;
+
+async function loadPresaleDetail(cityFolder, districtEncoded) {
+  const wrap = $('#presale-tab-content');
+  if (!districtEncoded) {
+    wrap.html('<div class="spinner-wrap" style="opacity:.55">Select a district from Panel A or the sidebar to view pre-sale transactions.</div>');
+    return;
+  }
+  const district = decodeURIComponent(districtEncoded);
+  wrap.html(`<div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading pre-sale data…</div>`);
+
+  if (presaleDT) { presaleDT.destroy(); presaleDT = null; }
+
+  let allRows;
+  try {
+    const resp = await fetch(`/api/${cityFolder}/districts/${districtEncoded}/rows?page=1&page_size=200&track=Presale&sort_by=Date&sort_dir=desc`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = await resp.json();
+    allRows = payload.items || [];
+  } catch (e) {
+    wrap.html(`<div class="alert-dark">No data for ${district}. Run <code>python main.py</code> first.</div>`);
+    return;
+  }
+
+  const rows = allRows || [];
+  if (!rows.length) {
+    wrap.html('<div class="alert-dark">No pre-sale transactions for this district.</div>');
+    return;
+  }
+
+  const tableId = `tbl-presale-${cityFolder}`;
+  wrap.html(`<table id="${tableId}" style="width:100%"></table>`);
+  const cols = buildPresaleColumns(rows[0]);
+
+  presaleDT = $(`#${tableId}`).DataTable({
+    data:       rows,
+    columns:    cols,
+    order:      [[2, 'desc']],
+    pageLength: 25,
+    dom: '<"dt-controls"lf>rtp',
+    language:   { search: '🔍', searchPlaceholder: 'Search project…', lengthMenu: 'Show _MENU_' },
+  });
+  $('#presale-title').text(`${district} — Pre-sale 預售屋`);
+}
+
+async function loadPanelC(cityFolder) {
+  const wrap = $('#trend-tab-content');
+  wrap.html(`<div class="spinner-wrap"><div class="spinner-ring"></div><br>Loading trends…</div>`);
+
+  if (trendTabDT) { trendTabDT.destroy(); trendTabDT = null; }
+
+  let rows;
+  try {
+    const cityCode = Object.entries(manifest.cities).find(([, v]) => v.folder === cityFolder)?.[0];
+    const resp = await fetch(`/api/${cityCode}/summary?page=1&page_size=500&sort_by=Quarter&sort_dir=desc`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = await resp.json();
+    rows = payload.items || [];
+  } catch (e) {
+    wrap.html(`<div class="alert-dark">No trend data for ${cityFolder}.</div>`);
+    return;
+  }
+  if (!rows.length) { wrap.html('<div class="alert-dark">Trend file empty.</div>'); return; }
+
+  const ts = currentTimeseries;
+  const tableId = `tbl-trend-${cityFolder}`;
+  wrap.html(`<table id="${tableId}" style="width:100%"></table>`);
+
+  const cols = [
+    {
+      title: 'District 行政區',
+      data: 'District',
+      render: d => `<span class="district-link" data-district="${encodeURIComponent(d)}">${d}</span>`,
+    },
+    { title: 'Quarter 季度', data: 'Quarter' },
+    { title: 'Median Price/Ping<br><small>萬/坪</small>', data: 'MedianPricePerPing', render: d => fmt(d) },
+    { title: 'Transactions<br><small>件數</small>', data: 'TransactionCount', render: d => fmt(d, 0) },
+    {
+      title: 'QoQ 季增率', data: 'QoQ_pct', render: d => fmtPct(d),
+      createdCell(td, v) { const c = growthClass(v); if (c) $(td).addClass(c); },
+    },
+    {
+      title: 'YoY 年增率', data: 'YoY_pct', render: d => fmtPct(d),
+      createdCell(td, v) { const c = growthClass(v); if (c) $(td).addClass(c); },
+    },
+    {
+      title: 'Trend 走勢', data: 'District', orderable: false,
+      render: () => '<span class="spark-placeholder-c">…</span>',
+    },
+  ];
+
+  trendTabDT = $(`#${tableId}`).DataTable({
+    data: rows,
+    columns: cols,
+    order: [[1, 'desc'], [0, 'asc']],
+    pageLength: 25,
+    dom: '<"dt-controls"lf>rtp',
+    language: { search: '🔍', searchPlaceholder: 'Search district…', lengthMenu: 'Show _MENU_' },
+    drawCallback() {
+      if (!ts || !ts.districts) return;
+      $(`#${tableId} tbody tr`).each(function () {
+        const $row = $(this);
+        const districtText = $row.find('.district-link').text();
+        const series = ts && ts.districts && ts.districts[districtText];
+        if (!series || series.length < 2) return;
+        const vals = ts.quarters.map((_, i) => series[i]);
+        const nonNull = vals.filter(v => v != null);
+        const isRising = nonNull.length >= 2 && nonNull[nonNull.length - 1] > nonNull[0];
+        $row.find('.spark-placeholder-c').replaceWith(sparklineSVG(vals, isRising));
+      });
+    },
+  });
+}
+
+async function loadDetail(cityFolder, districtEncoded) {
+  const district = decodeURIComponent(districtEncoded);
+  $('#detail-title').text(`${cityFolder} › ${district} — Existing Home Transactions 成屋`);
+  $('#detail-table-wrap').show();
+  $('html, body').animate({ scrollTop: $('#detail-table-wrap').offset().top - 60 }, 300);
+
+  if (detailDT) {
+    detailDT.destroy();
+    detailDT = null;
+    $('#detail-table thead').empty();
+    $('#detail-table tbody').empty();
+  }
+
+  let allRows;
+  try {
+    const cityCode = Object.entries(manifest.cities).find(([, v]) => v.folder === cityFolder)?.[0];
+    const resp = await fetch(`/api/${cityCode}/districts/${districtEncoded}/rows?page=1&page_size=200&track=Actual&sort_by=Date&sort_dir=desc`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = await resp.json();
+    allRows = payload.items || [];
+  } catch (e) {
+    $('#detail-table-wrap').hide();
+    alert(`Could not load detail data for ${district}.`);
+    return;
+  }
+
+  const rows = allRows || [];
+  if (!rows.length) {
+    $('#detail-table tbody').html('<tr><td colspan="9">No records found.</td></tr>');
+    return;
+  }
+
+  // Render price histogram from all rows (Actual + Presale)
+  renderHistogram(allRows, district);
+
+  const cols = buildDetailColumns(rows[0]);
+  const dateIdx = cols.findIndex(c => c.data === 'Date');
+
+  detailDT = $('#detail-table').DataTable({
+    data:      rows,
+    columns:   cols,
+    order:     dateIdx >= 0 ? [[dateIdx, 'desc']] : [],
+    pageLength: 25,
+    dom: '<"dt-controls"lf>rtp',
+    language:  { search: '🔍', searchPlaceholder: 'Search…', lengthMenu: 'Show _MENU_' },
+  });
+
+  // Also load Panel B pre-sale for this district
+  loadPresaleDetail(cityFolder, districtEncoded);
+}
+/* ── Chart functions ───────────────────────────────────────────────────── */
+
+function destroyCharts() {
+  [chartTrend, chartTop10, chartCombo].forEach(c => { if (c) c.destroy(); });
+  chartTrend = chartTop10 = chartCombo = null;
+}
+
+/* ── V2 helpers ─────────────────────────────────────────────────────────── */
+
+let v2Insights = null;
+let chartHistogram = null;
+
+async function loadV2Insights(cityFolder) {
+  v2Insights = null;
+  try {
+    const r = await fetch(`data/processed/${cityFolder}/v2_insights.json`);
+    if (r.ok) v2Insights = await r.json();
+  } catch (_) { /* graceful */ }
+  renderForecastCard(cityFolder);
+}
+
+function renderForecastCard(cityFolder) {
+  if (!v2Insights) { $('#forecast-card').hide(); return; }
+  const cf = v2Insights.city_forecast || {};
+  const districts = v2Insights.districts || {};
+  const city = manifest && Object.values(manifest.cities).find(c => c.folder === cityFolder);
+  const cityName = city ? city.name : cityFolder;
+
+  $('#forecast-card-title').text(`${cityName} — Professional Forecast 市場預測`);
+
+  // City summary pills
+  const oracleArrow = cf.oracle_trend === '↑' ? '↑' : cf.oracle_trend === '↓' ? '↓' : '→';
+  const oracleCol   = cf.oracle_trend === '↑' ? 'var(--neon-red)' : cf.oracle_trend === '↓' ? 'var(--neon-cyan)' : '#5a6480';
+  $('#forecast-city-bar').html(`
+    <span class="fc-pill oracle">
+      Oracle Next: ${cf.oracle_next_median != null ? cf.oracle_next_median.toFixed(1) + ' 萬' : '—'}
+      <span style="color:${oracleCol}">${oracleArrow}</span>
+    </span>
+    <span class="fc-pill temp">${cf.market_temp || '⚪ N/A'}</span>
+    <span class="fc-pill premium">Premium Gap: ${cf.premium_gap_pct != null ? (cf.premium_gap_pct >= 0 ? '+' : '') + cf.premium_gap_pct.toFixed(1) + '%' : '—'}</span>
+    <span class="fc-pill quick">Quick-Sale: ${cf.quick_sale_price != null ? cf.quick_sale_price.toFixed(1) + ' 萬' : '—'}</span>
+  `);
+
+  // District cards
+  const cards = Object.entries(districts)
+    .sort((a, b) => (b[1].actual_median || 0) - (a[1].actual_median || 0))
+    .slice(0, 18)
+    .map(([name, d]) => {
+      const arrow = d.oracle_trend === '↑' ? '<span class="tl-red">↑</span>'
+                  : d.oracle_trend === '↓' ? '<span class="tl-green">↓</span>'
+                  : '<span style="color:#5a6480">→</span>';
+      const stCls = d.short_term_ratio_pct > 30 ? 'tl-red' : d.short_term_ratio_pct > 15 ? 'tl-yellow' : '';
+      return `<div class="fdc">
+        <div class="fdc-name">${name}</div>
+        <div class="fdc-row"><span>Median</span><span class="fdc-val">${d.actual_median != null ? d.actual_median.toFixed(1) : '—'} 萬</span></div>
+        <div class="fdc-row"><span>Oracle</span><span class="fdc-val">${d.oracle_next_median != null ? d.oracle_next_median.toFixed(1) : '—'} ${arrow}</span></div>
+        <div class="fdc-row"><span>Temp</span><span class="fdc-val" style="font-size:.65rem">${d.market_temp || '—'}</span></div>
+        <div class="fdc-row"><span>Quick-Sale</span><span class="fdc-val">${d.quick_sale_price != null ? d.quick_sale_price.toFixed(1) : '—'} 萬</span></div>
+        <div class="fdc-row"><span>⚠️ Short-term</span><span class="fdc-val ${stCls}">${d.short_term_ratio_pct != null ? d.short_term_ratio_pct.toFixed(1) + '%' : '—'}</span></div>
+      </div>`;
+    }).join('');
+
+  $('#forecast-district-grid').html(cards);
+  $('#forecast-card').show();
+}
+
+function renderHistogram(rows, label) {
+  const prices = rows
+    .map(r => parseFloat(r.PricePerPing))
+    .filter(v => !isNaN(v) && v > 0);
+  if (prices.length < 3) { $('#histogram-card').hide(); return; }
+
+  const min = Math.floor(Math.min(...prices));
+  const max = Math.ceil(Math.max(...prices));
+  const binCount = Math.min(20, Math.max(8, Math.round(prices.length / 5)));
+  const binWidth = (max - min) / binCount;
+  const bins = Array.from({ length: binCount }, (_, i) => ({
+    label: `${(min + i * binWidth).toFixed(0)}`,
+    count: 0,
+  }));
+  prices.forEach(p => {
+    const i = Math.min(Math.floor((p - min) / binWidth), binCount - 1);
+    bins[i].count++;
+  });
+
+  const ctx = document.getElementById('chart-histogram').getContext('2d');
+  if (chartHistogram) chartHistogram.destroy();
+  chartHistogram = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: bins.map(b => b.label),
+      datasets: [{
+        label: 'Actual',
+        data: bins.map(b => {
+          const lo = min + bins.indexOf(b) * binWidth;
+          return rows.filter(r => parseFloat(r.PricePerPing) >= lo && parseFloat(r.PricePerPing) < lo + binWidth && (!r.Track || r.Track === 'Actual')).length;
+        }),
+        backgroundColor: 'rgba(77,159,255,0.35)',
+        borderColor: 'rgba(77,159,255,0.75)',
+        borderWidth: 1, borderRadius: 3,
+      }, {
+        label: 'Presale',
+        data: bins.map(b => {
+          const lo = min + bins.indexOf(b) * binWidth;
+          return rows.filter(r => parseFloat(r.PricePerPing) >= lo && parseFloat(r.PricePerPing) < lo + binWidth && r.Track === 'Presale').length;
+        }),
+        backgroundColor: 'rgba(162,89,255,0.30)',
+        borderColor: 'rgba(162,89,255,0.65)',
+        borderWidth: 1, borderRadius: 3,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { labels: { color: '#e8eaf2', font: CHART_FONT, boxWidth: 12 } },
+        tooltip: { ...TOOLTIP_STYLE, borderColor: '#4d9fff', titleColor: '#4d9fff', bodyColor: '#e8eaf2' },
+      },
+      scales: {
+        x: { ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 9 }, maxRotation: 45 },
+             grid: { color: CHART_GRID }, border: { color: 'rgba(255,255,255,0.1)' } },
+        y: { ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 9 } },
+             grid: { color: CHART_GRID }, border: { color: 'rgba(255,255,255,0.1)' } },
+      },
+    },
+  });
+  $('#histogram-title').text(`${label} — Unit Price Distribution 單價分布 (萬/坪)`);
+  $('#histogram-card').show();
+}
+
+async function updateCharts(cityCode) {
+  const city = manifest.cities[cityCode];
+  destroyCharts();
+  $('#charts-no-data').hide();
+
+  let ts;
+  try {
+    const r = await fetch(`data/processed/${city.folder}/timeseries.json`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    ts = await r.json();
+  } catch (e) {
+    $('#charts-no-data').show();
+    return;
+  }
+
+  if (!ts.quarters || ts.quarters.length < 2) {
+    $('#charts-no-data').show();
+    return;
+  }
+
+  currentTimeseries = ts;
+  currentPresaleTimeseries = null;
+
+  $('#trend-chart-title').text(`${city.name} — Market Momentum 市場動能`);
+
+  let pts = null;
+  try {
+    const pr = await fetch(`data/processed/${city.folder}/presale_timeseries.json`);
+    if (pr.ok) pts = await pr.json();
+  } catch (_) { /* presale data not yet generated */ }
+  currentPresaleTimeseries = pts;
+
+  renderTrendChart(ts, pts);
+  renderComboChart(ts, pts);
+
+  // v2 insights (forecast card)
+  loadV2Insights(city.folder);
+
+  // Load summary.csv for Top-10 chart
+  try {
+    const cityCode = Object.entries(manifest.cities).find(([, v]) => v.folder === city.folder)?.[0];
+    const resp = await fetch(`/api/${cityCode}/summary?page=1&page_size=500&sort_by=Quarter&sort_dir=desc`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const payload = await resp.json();
+    const rows = payload.items || [];
+    renderTop10Chart(rows);
+    if (currentSummaryRows.length) {
+      updateMetricCards(city, ts, currentSummaryRows, currentPresaleTimeseries);
+    }
+  } catch (e) {
+    // Top-10 silently hidden if summary unavailable
+  }
+}
+
+function _chartScales(yLabel = '') {
+  return {
+    x: {
+      ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 }, maxRotation: 45 },
+      grid:  { color: CHART_GRID },
+      border: { color: 'rgba(255,255,255,0.1)' },
+    },
+    y: {
+      ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
+               callback: v => v.toFixed(0) + (yLabel ? ' ' + yLabel : '') },
+      grid:  { color: CHART_GRID },
+      border: { color: 'rgba(255,255,255,0.1)' },
+    },
+  };
+}
+
+function renderTrendChart(ts, pts) {
+  const ctx = document.getElementById('chart-trend').getContext('2d');
+  const datasets = [
+    {
+      label: 'Actual 實價登錄 萬/嵪',
+      data:  ts.city_median,
+      borderColor: '#00f5c4',
+      backgroundColor: 'rgba(0,245,196,0.07)',
+      borderWidth: 2.5,
+      pointBackgroundColor: '#00f5c4',
+      pointBorderColor: '#00f5c4',
+      pointRadius: 4,
+      pointHoverRadius: 7,
+      tension: 0.35,
+      fill: true,
+      spanGaps: true,
+    },
+  ];
+
+  if (pts && pts.quarters && pts.quarters.length >= 2) {
+    // Align presale data to the actual-price quarter axis
+    const alignedPresale = ts.quarters.map(q => {
+      const idx = pts.quarters.indexOf(q);
+      return idx >= 0 ? pts.city_median[idx] : null;
+    });
+    datasets.push({
+      label: 'Pre-sale 預售 萬/嵪',
+      data:  alignedPresale,
+      borderColor: '#a259ff',
+      backgroundColor: 'transparent',
+      borderWidth: 2,
+      borderDash: [5, 3],
+      pointBackgroundColor: '#a259ff',
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      tension: 0.35,
+      spanGaps: true,
+    });
+  }
+
+  chartTrend = new Chart(ctx, {
+    type: 'line',
+    data: { labels: ts.quarters, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: {
+        legend: { labels: { color: '#e8eaf2', font: CHART_FONT, boxWidth: 14 } },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          borderColor: '#00f5c4',
+          titleColor:  '#00f5c4',
+          bodyColor:   '#e8eaf2',
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              return v != null ? ` Median: ${v.toFixed(2)} 萬/嵪` : ' No data';
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 }, maxRotation: 45 },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+        y: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
+                   callback: v => v.toFixed(0) + '萬' },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+      },
+    },
+  });
+}
+
+/** Overlay a single district's trend on the existing trend chart. */
+function overlayDistrictTrend(districtName, ts) {
+  if (!chartTrend || !ts.districts[districtName]) return;
+  // Remove any previous overlay
+  chartTrend.data.datasets = chartTrend.data.datasets.slice(0, 1);
+  chartTrend.data.datasets.push({
+    label: districtName,
+    data:  ts.districts[districtName],
+    borderColor: '#ff2d55',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderDash: [4, 3],
+    pointBackgroundColor: '#ff2d55',
+    pointRadius: 3,
+    tension: 0.35,
+    spanGaps: true,
+  });
+  chartTrend.update();
+}
+
+function renderTop10Chart(rows) {
+  // Show top-10 districts ranked by current (most-recent quarter) median price
+  const latest = {};
+  rows.forEach(r => {
+    const d = r.District;
+    if (!latest[d] || quarterKey(r.Quarter) > quarterKey(latest[d].Quarter)) latest[d] = r;
+  });
+
+  const top10 = Object.values(latest)
+    .filter(r => {
+      const price = parseFloat(r.MedianPricePerPing);
+      const cnt   = parseInt(r.TransactionCount, 10);
+      return !isNaN(price) && price > 0 && cnt >= MIN_SAMPLE_JS;
+    })
+    .sort((a, b) => parseFloat(b.MedianPricePerPing) - parseFloat(a.MedianPricePerPing))
+    .slice(0, 10);
+
+  const ctx = document.getElementById('chart-top10').getContext('2d');
+
+  if (top10.length === 0) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = '#5a6480';
+    ctx.font = '13px Inter, system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText('No price data available', ctx.canvas.width / 2, ctx.canvas.height / 2);
+    return;
+  }
+
+  const values    = top10.map(r => parseFloat(r.MedianPricePerPing));
+  const labels    = top10.map(r => r.District);
+  const quarters  = top10.map(r => r.Quarter);
+
+  // Colour gradient: top districts → gold, lower → blue
+  const bgColors = values.map((_, i) =>
+    i === 0 ? 'rgba(255,209,102,0.75)' :
+    i <  3  ? 'rgba(255,150,70,0.55)'  :
+              'rgba(77,159,255,0.40)');
+  const borderColors = values.map((_, i) =>
+    i === 0 ? '#ffd166' :
+    i <  3  ? '#ff9646' :
+              '#4d9fff');
+
+  chartTop10 = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Median 萬/嵪',
+        data: values,
+        backgroundColor: bgColors,
+        borderColor: borderColors,
+        borderWidth: 1.5,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          borderColor: '#ffd166',
+          titleColor:  '#ffd166',
+          bodyColor:   '#e8eaf2',
+          callbacks: {
+            label: (ctx) => {
+              const q = quarters[ctx.dataIndex];
+              return ` ${ctx.parsed.x.toFixed(1)} 萬/嵪  (${q})`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 },
+                   callback: v => v + '萬' },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+        y: {
+          ticks: { color: '#e8eaf2', font: { ...CHART_FONT, size: 11 } },
+          grid:  { color: 'rgba(255,255,255,0.03)' },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+      },
+    },
+  });
+}
+
+function renderComboChart(ts, pts) {
+  const ctx = document.getElementById('chart-combo').getContext('2d');
+
+  // Align presale volume to actual quarters
+  const presaleVol = pts && pts.quarters
+    ? ts.quarters.map(q => {
+        const idx = pts.quarters.indexOf(q);
+        return idx >= 0 ? pts.city_volume[idx] : null;
+      })
+    : null;
+
+  const datasets = [
+    {
+      type: 'bar',
+      label: 'Actual Volume 實價',
+      data:  ts.city_volume,
+      backgroundColor: 'rgba(77,159,255,0.22)',
+      borderColor:     'rgba(77,159,255,0.55)',
+      borderWidth: 1,
+      borderRadius: 3,
+      yAxisID: 'yVol',
+      order: 3,
+    },
+    {
+      type: 'line',
+      label: 'Median Price 萬/嵪',
+      data:  ts.city_median,
+      borderColor:      '#00f5c4',
+      backgroundColor:  'transparent',
+      borderWidth: 2.5,
+      pointBackgroundColor: '#00f5c4',
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      tension: 0.35,
+      yAxisID: 'yPrice',
+      order: 1,
+      spanGaps: true,
+    },
+  ];
+
+  if (presaleVol) {
+    datasets.push({
+      type: 'bar',
+      label: 'Pre-sale Volume 預售',
+      data:  presaleVol,
+      backgroundColor: 'rgba(162,89,255,0.28)',
+      borderColor:     'rgba(162,89,255,0.65)',
+      borderWidth: 1,
+      borderRadius: 3,
+      yAxisID: 'yVol',
+      order: 2,
+    });
+  }
+
+  chartCombo = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: ts.quarters, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#e8eaf2', font: CHART_FONT, boxWidth: 14 } },
+        tooltip: {
+          ...TOOLTIP_STYLE,
+          borderColor: '#4d9fff',
+          titleColor:  '#4d9fff',
+          bodyColor:   '#e8eaf2',
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: '#5a6480', font: { ...CHART_FONT, size: 10 }, maxRotation: 45 },
+          grid:  { color: CHART_GRID },
+          border: { color: 'rgba(255,255,255,0.1)' },
+        },
+        yPrice: {
+          type: 'linear',
+          position: 'left',
+          ticks: { color: '#00f5c4', font: { ...CHART_FONT, size: 10 },
+                   callback: v => v.toFixed(0) + '萬' },
+          grid:  { color: CHART_GRID },
+          border: { color: '#00f5c4' },
+          title: { display: true, text: '萬/嵪', color: '#00f5c4',
+                   font: { ...CHART_FONT, size: 10 } },
+        },
+        yVol: {
+          type: 'linear',
+          position: 'right',
+          ticks: { color: '#4d9fff', font: { ...CHART_FONT, size: 10 } },
+          grid:  { drawOnChartArea: false },
+          border: { color: '#4d9fff' },
+          title: { display: true, text: '件數', color: '#4d9fff',
+                   font: { ...CHART_FONT, size: 10 } },
+        },
+      },
+    },
+  });
+}
+/* ── Sidebar nav setup ───────────────────────────────────────────────────── */
+
+const CITY_ORDER = ['A', 'F', 'H', 'B', 'D', 'E'];
+
+function buildSidebar(mf) {
+  const nav = $('#city-nav');
+  CITY_ORDER.forEach((code) => {
+    const city = mf.cities[code];
+    const districts = city.districts || [];
+
+    nav.append(`
+      <button class="city-btn" data-city-code="${code}">
+        <span class="city-code">${code}</span>
+        ${city.name}
+      </button>
+      <div class="district-submenu" id="sub-${code}">
+        ${districts.map(d =>
+          `<button class="district-sub-btn"
+              data-city-code="${code}"
+              data-district="${encodeURIComponent(d)}"
+              title="${d}">${d}</button>`
+        ).join('')}
+      </div>
+    `);
+  });
+}
+
+async function selectLocation(code, type, label) {
+  const city = manifest.cities[code];
+  if (!city) return;
+  await loadSummary(code);
+  if (type === 'district') {
+    $('#search-results').hide();
+    $('#geo-search').val(`${city.name} ${label}`);
+    const encoded = encodeURIComponent(label);
+    loadDetail(city.folder, encoded);
+    if (currentTimeseries) overlayDistrictTrend(label, currentTimeseries);
+  }
+}
+
+/* ── Event delegation ────────────────────────────────────────────────────── */
+
+// Panel tab switching
+$(document).on('click', '.panel-tab-btn', function () {
+  const panel = $(this).data('panel');
+  $('.panel-tab-btn').removeClass('active');
+  $(this).addClass('active');
+  $('.panel-pane').removeClass('active');
+  $(`#pane-${panel}`).addClass('active');
+});
+
+// City nav button click
+$(document).on('click', '.city-btn', function () {
+  const code = $(this).data('city-code');
+  $('#detail-table-wrap').hide();
+  loadSummary(code);
+});
+
+// District submenu button click → filter all panels to that district
+$(document).on('click', '.district-sub-btn', function () {
+  const code    = $(this).data('city-code');
+  const encoded = $(this).data('district');
+  const city    = manifest && manifest.cities[code];
+  if (!city) return;
+
+  $('.district-sub-btn').removeClass('active');
+  $(this).addClass('active');
+
+  // Make sure city is active
+  if (currentCityCode !== code) {
+    loadSummary(code).then(() => {
+      loadDetail(city.folder, encoded);
+    });
+  } else {
+    loadDetail(city.folder, encoded);
+  }
+
+  // Switch to Panel A so the user sees results immediately
+  $('.panel-tab-btn').removeClass('active');
+  $('.panel-tab-btn[data-panel="A"]').addClass('active');
+  $('.panel-pane').removeClass('active');
+  $('#pane-A').addClass('active');
+
+  // Overlay district trend on chart
+  if (currentTimeseries) {
+    overlayDistrictTrend(decodeURIComponent(encoded), currentTimeseries);
+  }
+});
+
+// Search interactions
+$('#geo-search').on('input', function () {
+  renderSearchResults($(this).val());
+});
+$('#geo-search').on('focus', function () {
+  renderSearchResults($(this).val());
+});
+$(document).on('click', '.search-item', function () {
+  const code = $(this).data('code');
+  const type = $(this).data('type');
+  const label = $(this).data('label');
+  selectLocation(code, type, label);
+});
+$(document).on('click', 'body', function (evt) {
+  if (!$(evt.target).closest('#search-wrap').length) {
+    $('#search-results').hide();
+  }
+});
+
+// Drill into district detail when a district link is clicked — also overlay chart
+$(document).on('click', '.district-link', function () {
+  const district = $(this).data('district');
+  if (!activeCity) return;
+
+  // Highlight matching district sub-btn
+  const code = currentCityCode;
+  $('.district-sub-btn').removeClass('active');
+  $(`.district-sub-btn[data-city-code="${code}"][data-district="${district}"]`).addClass('active');
+
+  loadDetail(activeCity, district);
+
+  // Switch to Panel A
+  $('.panel-tab-btn').removeClass('active');
+  $('.panel-tab-btn[data-panel="A"]').addClass('active');
+  $('.panel-pane').removeClass('active');
+  $('#pane-A').addClass('active');
+
+  // Overlay this district on the trend chart if timeseries is available
+  const city = Object.values(manifest.cities).find(c => c.folder === activeCity);
+  if (city) {
+    fetch(`data/${city.folder}/timeseries.json`)
+      .then(r => r.ok ? r.json() : null)
+      .then(ts => { if (ts) overlayDistrictTrend(decodeURIComponent(district), ts); })
+      .catch(() => {});
+  }
+});
+
+// Back to summary
+$('#back-btn').on('click', () => {
+  $('#detail-table-wrap').hide();
+  $('html, body').animate({ scrollTop: 0 }, 200);
+});
+
+/* ── Bootstrap ───────────────────────────────────────────────────────────── */
+
+$(async function () {
+  let mf;
+  try {
+    const resp = await fetch('/api/manifest');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    mf = await resp.json();
+  } catch (e) {
+    $('#city-tab-content').html(
+      `<div class="alert-dark">
+        <strong>No data yet.</strong><br>
+        Run <code>python main.py</code> to generate data files, then refresh.
+       </div>`
+    );
+    return;
+  }
+
+  manifest = mf;
+
+  // Show data freshness
+  const ts = new Date(mf.generated);
+  $('#data-period').text(
+    ts.toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  );
+
+  // Load last_updated.json for footer timestamp
+  try {
+    const luResp = await fetch('/data/processed/last_updated.json');
+    if (luResp.ok) {
+      const lu = await luResp.json();
+      $('#footer-last-sync').text('🕐 Last pipeline sync: ' + (lu.updated_taipei || lu.updated_utc));
+    }
+  } catch (_) { /* graceful */ }
+
+  buildSidebar(mf);
+  buildGeoIndex(mf);
+
+  // Auto-load first city
+  loadSummary(CITY_ORDER[0]);
+});
+</script>
+</body>
+</html>

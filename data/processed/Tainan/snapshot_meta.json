@@ -1,0 +1,243 @@
+{
+  "city": "Tainan",
+  "generated": "2026-04-28T08:39:06.039642+00:00",
+  "snapshot_format": "parquet",
+  "snapshot_suffix": "_v3.parquet",
+  "districts": [
+    {
+      "district": "下營區",
+      "file": "下營區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-02-09",
+      "date_max": "2026-02-09",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "中西區",
+      "file": "中西區_v3.parquet",
+      "rows": 5,
+      "date_min": "2026-02-08",
+      "date_max": "2026-03-12",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "仁德區",
+      "file": "仁德區_v3.parquet",
+      "rows": 14,
+      "date_min": "2025-09-21",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "佳里區",
+      "file": "佳里區_v3.parquet",
+      "rows": 6,
+      "date_min": "2025-12-07",
+      "date_max": "2026-03-12",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "北區",
+      "file": "北區_v3.parquet",
+      "rows": 14,
+      "date_min": "2026-01-30",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "南區",
+      "file": "南區_v3.parquet",
+      "rows": 5,
+      "date_min": "2026-02-07",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "善化區",
+      "file": "善化區_v3.parquet",
+      "rows": 10,
+      "date_min": "2025-12-02",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "安南區",
+      "file": "安南區_v3.parquet",
+      "rows": 25,
+      "date_min": "2025-10-06",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "安定區",
+      "file": "安定區_v3.parquet",
+      "rows": 3,
+      "date_min": "2026-03-02",
+      "date_max": "2026-03-29",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "安平區",
+      "file": "安平區_v3.parquet",
+      "rows": 8,
+      "date_min": "2026-01-21",
+      "date_max": "2026-03-15",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "後壁區",
+      "file": "後壁區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-03-25",
+      "date_max": "2026-03-25",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "新化區",
+      "file": "新化區_v3.parquet",
+      "rows": 3,
+      "date_min": "2026-03-07",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "新市區",
+      "file": "新市區_v3.parquet",
+      "rows": 2,
+      "date_min": "2026-02-08",
+      "date_max": "2026-03-02",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "新營區",
+      "file": "新營區_v3.parquet",
+      "rows": 6,
+      "date_min": "2026-01-16",
+      "date_max": "2026-03-09",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "東區",
+      "file": "東區_v3.parquet",
+      "rows": 17,
+      "date_min": "2025-12-10",
+      "date_max": "2026-03-17",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "柳營區",
+      "file": "柳營區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-02-11",
+      "date_max": "2026-02-11",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "歸仁區",
+      "file": "歸仁區_v3.parquet",
+      "rows": 4,
+      "date_min": "2026-02-27",
+      "date_max": "2026-03-25",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "永康區",
+      "file": "永康區_v3.parquet",
+      "rows": 32,
+      "date_min": "2025-12-07",
+      "date_max": "2026-03-27",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "玉井區",
+      "file": "玉井區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-02-05",
+      "date_max": "2026-02-05",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "西港區",
+      "file": "西港區_v3.parquet",
+      "rows": 2,
+      "date_min": "2026-01-02",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "關廟區",
+      "file": "關廟區_v3.parquet",
+      "rows": 9,
+      "date_min": "2026-02-09",
+      "date_max": "2026-03-10",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "麻豆區",
+      "file": "麻豆區_v3.parquet",
+      "rows": 5,
+      "date_min": "2026-01-26",
+      "date_max": "2026-03-23",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    }
+  ]
+}

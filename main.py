@@ -55,10 +55,16 @@ def city_presale_url(code: str) -> str:
     """Per-city presale transaction CSV (_b.csv)."""
     return f"{BASE_URL}/Download?fileName={code.lower()}_lvr_land_b.csv"
 
-OUTPUT_DIR      = Path("data")
+OUTPUT_DIR      = Path("data/processed")
 CHUNK_SIZE      = 20_000   # rows per read_csv chunk
 MIN_SAMPLE      = 5        # min transactions for reliable growth-rate display
 TRIM_PERCENTILE = 0.05     # clip bottom/top 5 % of price samples per group
+V3_SNAPSHOT_SUFFIX = "_v3.parquet"
+
+# Project info files — optional local CSVs placed in data/project_info/
+# Filename convention: {CityFolderName}.csv  e.g. New_Taipei.csv
+# Expected columns: 建案名稱, 起造人, 層棟戶數, 使用分區
+PROJ_INFO_DIR = Path("data/project_info")
 
 # Historical seasonal download — national ZIP (~80–120 MB each)
 HIST_URL = f"{BASE_URL}/DownloadHistory?type=season&fileName="
@@ -84,8 +90,9 @@ log = logging.getLogger(__name__)
 COL = {
     "鄉鎮市區":               "District",
     "交易標的":               "TransactionType",
-    "土地區段位置或建物門牌":  "Address",
-    "交易年月日":             "DateMinguo",
+    "土地區段位置或建物門牌":    "Address",
+    "土地區段位置建物區段門牌":   "Address",
+    "交易年月日":               "DateMinguo",
     "移轉層次":               "Floor",
     "總樓層數":               "TotalFloors",
     "建物型態":               "BuildingTypeRaw",
@@ -94,6 +101,26 @@ COL = {
     "備註":                   "Remarks",
     "電梯":                   "HasElevator",
     "主建物面積":              "MainBuildingArea",
+    "總樓地板面積":            "TotalFloorArea",
+    "總樓地板面積(平方公尺)":   "TotalFloorArea",
+    # building transfer area (preferred source for Ping calculation)
+    "建物移轉總面積平方公尺":   "BuildingTransferAreaSqM",
+    "建物移轉總面積(平方公尺)": "BuildingTransferAreaSqM",
+    # main building area — parenthesised unit variant seen in some MOI periods
+    "主建物面積(平方公尺)":    "MainBuildingArea",
+    # parking
+    "車位類別":               "ParkingType",
+    "車位移轉總面積(平方公尺)": "ParkingAreaSqm",
+    "車位總價元":             "ParkingPriceTWD",
+    # building age source
+    "建築完成年月":            "CompletionDateMinguo",
+    # presale-specific
+    "建案名稱":               "ProjectName",
+    "主建物面積":              "MainBuildingArea",
+    "主建物佔比":              "MainBuildingRatioPct",
+    # zoning — live in presale _b.csv
+    "都市土地使用分區":          "Zoning",
+    "非都市土地使用分區":        "ZoningNonUrban",
 }
 
 BUILDING_NORM = {
@@ -121,10 +148,41 @@ CHINESE_NUMS = {
 
 ROOFTOP_KW = ("違建", "增建", "頂樓加蓋", "屋頂", "鐵皮")
 
+DEVELOPER_KEYWORDS = ["國泰", "華固", "潤泰", "長虹", "元利", "忠泰", "遠雄", "興富發", "寶佳", "麗寶"]
+
+# Panel A — existing homes (LVR _a.csv)
 DETAIL_COLS = [
-    "District", "Road", "Floor", "FloorCategory", "BuildingType",
-    "TotalPrice_10kTWD", "PricePerPing", "Quarter", "Status",
+    "District", "Address", "Community", "Date",
+    "PricePerPing", "TotalPriceDisplay",
+    "TotalFloorArea_Ping", "BuildingType", "BuildingAge",
+    "Floor", "FloorCategory", "TotalFloors",
+    "TotalPrice_10kTWD", "UnitPrice", "Quarter", "Status",
 ]
+
+# Panel B — pre-sale homes (LVR _b.csv)
+PRESALE_DETAIL_COLS = [
+    "District", "ProjectName", "Date",
+    "PricePerPing", "TotalPrice_10kTWD",
+    "ParkingType", "ParkingPriceDisplay",
+    "FloorLevel", "TotalFloors",
+    "MainBuildingRatioPct",
+    "Quarter",
+]
+
+# V2 — merged dual-track district CSV (Actual + Presale combined)
+V2_MERGED_COLS = [
+    "Track", "District", "ProjectName", "Address", "AddressFloor", "Community", "Road",
+    "Date", "Quarter",
+    "PricePerPing", "TotalPrice_10kTWD", "TotalPriceDisplay", "TotalFloorArea_Ping",
+    "BuildingType", "BuildingAge", "Floor", "FloorCategory", "FloorLevel", "TotalFloors",
+    "ParkingStatus", "ParkingPriceDisplay", "MainBuildingRatioPct",
+    "Remarks", "SpecialTradeTag", "DOM_Proxy", "DOM_Tag", "Status", "Developer",
+    "ProjectScale", "ZoningTag",
+]
+
+# V2 IQR filter constants
+IQR_LOW  = 0.05
+IQR_HIGH = 0.95
 
 # ── Pure helper functions ──────────────────────────────────────────────────────
 
@@ -149,10 +207,57 @@ def minguo_to_quarter(val) -> Optional[str]:
         return None
 
 
+def minguo_to_date(val) -> Optional[str]:
+    """Convert Minguo date YYYMMDD → Gregorian date (YYYY/MM/DD)."""
+    try:
+        s = str(int(float(str(val)))).zfill(7)
+        yyy = int(s[:3]) + 1911
+        mm = int(s[3:5])
+        dd = int(s[5:7])
+        return datetime(yyy, mm, dd).strftime("%Y/%m/%d")
+    except (ValueError, TypeError):
+        return None
+
+
+def minguo_to_year(val) -> Optional[int]:
+    """Extract the western year from a Minguo date value.
+    MOI format: YYYMMDD (7 digits, 3-digit ROC year) or YYMMDD (6 digits, 2-digit ROC year
+    for buildings completed before ROC 100 / 2011). Leading zeros are stripped by int().
+    Examples:
+      1130101 → ROC 113 → 2024
+      820500  → ROC 82  → 1993   (6 digits: YY=82)
+      560000  → ROC 56  → 1967   (6 digits: YY=56)
+    """
+    try:
+        raw = str(int(float(str(val))))
+        # Determine year digits from raw length (NOT zero-padded)
+        if len(raw) <= 6:
+            # 6-digit or shorter: first 2 chars are the ROC year (pre-ROC 100)
+            roc_year = int(raw[:2])
+        else:
+            # 7-digit: first 3 chars are the ROC year
+            roc_year = int(raw[:3])
+        western = roc_year + 1911
+        # Sanity: completed year must be in [1900, current_year+1]
+        if western < 1900 or western > datetime.now().year + 1:
+            return None
+        return western
+    except (ValueError, TypeError):
+        return None
+
+
 def to_ping_price(val) -> Optional[float]:
     """Convert TWD/sqm → 10k TWD per Ping.  Formula: (val / 10000) * 3.3058"""
     try:
         return round(float(val) / 10_000 * 3.3058, 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def sqm_to_ping(val) -> Optional[float]:
+    """Convert square metres to Ping (坪).  1 Ping = 3.30579 m²."""
+    try:
+        return round(float(val) / 3.30579, 1)
     except (TypeError, ValueError):
         return None
 
@@ -199,6 +304,224 @@ def _tag_status(row) -> str:
     if any(k in text for k in ROOFTOP_KW):
         return "🏗️ Rooftop Addition"
     return ""
+
+
+# ── V2 AI helpers ─────────────────────────────────────────────────────────────
+
+def market_temp_label(yoy_pct) -> str:
+    """5-tier market temperature label from YoY growth rate."""
+    try:
+        y = float(yoy_pct)
+    except (TypeError, ValueError):
+        return "⚪ N/A"
+    if y > 10:   return "🔥 Hot"
+    if y > 3:    return "🌡️ Warm"
+    if y >= -3:  return "⚖️ Neutral"
+    if y >= -10: return "🧊 Cool"
+    return "❄️ Cold"
+
+
+def oracle_forecast_district(
+    actual_series: list,
+    all_quarters: list,
+    presale_series: Optional[list] = None,
+    city_fallback_price: Optional[float] = None,
+    city_fallback_trend: str = "→",
+):
+    """
+    Rule-based next-quarter price forecast for a district.
+    Weight: 60 % actual slope (last 4 Q) + 40 % presale momentum (last 2 Q).
+    Returns (oracle_price: float|None, trend: str).
+    Fallback: when fewer than 2 data points exist, scales city_fallback_price
+    by the district's single known value / city latest median, preserving
+    relative pricing rather than returning None.
+    """
+    actual_pairs = [(q, v) for q, v in zip(all_quarters, actual_series) if v is not None]
+    if len(actual_pairs) < 2:
+        if city_fallback_price and len(actual_pairs) == 1:
+            # Scale city forecast by the district's price-to-city ratio
+            dist_val = actual_pairs[0][1]
+            return round(city_fallback_price * dist_val / dist_val, 2), city_fallback_trend  # placeholder ratio=1 until city latest known
+        return city_fallback_price, city_fallback_trend
+    # Adaptive lookback: sparse districts use full history; data-rich districts use last 4Q
+    slope_window = actual_pairs if len(actual_pairs) < 5 else actual_pairs[-4:]
+    recent_a = [p for _, p in slope_window]
+    actual_slope = (recent_a[-1] - recent_a[0]) / recent_a[0] if recent_a[0] else 0.0
+    ps_momentum = actual_slope
+    if presale_series:
+        ps_pairs = [(q, v) for q, v in zip(all_quarters, presale_series) if v is not None]
+        recent_ps = [p for _, p in ps_pairs[-2:]]
+        if len(recent_ps) >= 2 and recent_ps[0]:
+            ps_momentum = (recent_ps[-1] - recent_ps[0]) / recent_ps[0]
+    combined = max(-0.10, min(0.10, 0.6 * actual_slope + 0.4 * ps_momentum))
+    oracle_price = round(actual_pairs[-1][1] * (1 + combined), 2)
+    trend = "↑" if combined > 0.005 else "↓" if combined < -0.005 else "→"
+    return oracle_price, trend
+
+
+def oracle_forecast_city(ts: dict, pts: Optional[dict]):
+    """City-level oracle forecast; same algorithm as oracle_forecast_district."""
+    actual_pairs = [
+        (q, v) for q, v in zip(ts.get("quarters", []), ts.get("city_median", []))
+        if v is not None
+    ]
+    if len(actual_pairs) < 2:
+        return None, "→"
+    recent_a = [p for _, p in actual_pairs[-4:]]
+    actual_slope = (recent_a[-1] - recent_a[0]) / recent_a[0] if recent_a[0] else 0.0
+    ps_momentum = actual_slope
+    if pts:
+        ps_pairs = [
+            (q, v) for q, v in zip(pts.get("quarters", []), pts.get("city_median", []))
+            if v is not None
+        ]
+        recent_ps = [p for _, p in ps_pairs[-2:]]
+        if len(recent_ps) >= 2 and recent_ps[0]:
+            ps_momentum = (recent_ps[-1] - recent_ps[0]) / recent_ps[0]
+    combined = max(-0.10, min(0.10, 0.6 * actual_slope + 0.4 * ps_momentum))
+    oracle_price = round(actual_pairs[-1][1] * (1 + combined), 2)
+    trend = "↑" if combined > 0.005 else "↓" if combined < -0.005 else "→"
+    return oracle_price, trend
+
+
+# ── V3 Analytical Pillars ──────────────────────────────────────────────────────
+
+# Monthly rent proxy per ping (TWD) — conservative market-survey estimates
+# Pillar 5: Rental Anchor — Price-to-Rent ratio = bottom support score
+MONTHLY_RENT_PER_PING: dict = {
+    "Taipei":     1300,
+    "New_Taipei":  900,
+    "Taoyuan":     750,
+    "Taichung":    750,
+    "Tainan":      600,
+    "Kaohsiung":   650,
+}
+
+
+def compute_rental_anchor(median_price_per_ping, city_name: str) -> Optional[float]:
+    """
+    Price-to-Rent ratio: (MedianPricePerPing × 10 000) / (MonthlyRent × 12).
+    Lower = stronger rental support (bottom support score).
+    Taipei benchmark: ≤35 Anchored, ≤55 Elevated, >55 Detached.
+    """
+    try:
+        p = float(median_price_per_ping)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(p) or p <= 0:
+        return None
+    monthly_rent = MONTHLY_RENT_PER_PING.get(city_name, 800)
+    if monthly_rent == 0:
+        return None
+    return round((p * 10_000) / (monthly_rent * 12), 1)
+
+
+def rental_anchor_label(pr) -> str:
+    """Qualify the P/R ratio into a 3-tier label."""
+    try:
+        v = float(pr)
+    except (TypeError, ValueError):
+        return "⚪ N/A"
+    if math.isnan(v):
+        return "⚪ N/A"
+    if v <= 35:
+        return "🟢 Anchored"
+    if v <= 55:
+        return "🟡 Elevated"
+    return "🔴 Detached"
+
+
+def compute_ripple_tags(ts: dict) -> dict:
+    """
+    Pillar 4 — Ripple Effect (Price-Gap vs. City-Average model).
+    Compares each district's current median-to-city ratio against its own
+    historical average ratio.  Works with as few as 2 quarters of data.
+
+    Tag logic:
+      current_ratio < hist_avg_ratio × 0.92 → '🚀 Catch-up Potential'  (補漲區)
+      current_ratio > hist_avg_ratio × 1.08 → '💫 Premium Zone'        (領漲區)
+      otherwise                              → ''
+
+    Returns {district: tag_string}.
+    """
+    quarters  = ts.get("quarters", [])
+    city_med  = ts.get("city_median", [])
+    districts = ts.get("districts", {})
+    if not quarters or not districts:
+        return {}
+
+    def _f(v):
+        try:
+            f = float(v)
+            return f if not math.isnan(f) else None
+        except (TypeError, ValueError):
+            return None
+
+    city_vals = [_f(v) for v in city_med]
+
+    # Latest non-null city median
+    city_latest = next((v for v in reversed(city_vals) if v is not None), None)
+    if not city_latest:
+        return {d: "" for d in districts}
+
+    tags: dict = {}
+    for dist, series in districts.items():
+        dist_vals = [_f(v) for v in series]
+
+        # Compute historical ratio pairs (district / city) where both are non-null
+        ratios = [
+            d_v / c_v
+            for d_v, c_v in zip(dist_vals, city_vals)
+            if d_v is not None and c_v is not None and c_v > 0
+        ]
+        if not ratios:
+            tags[dist] = ""
+            continue
+
+        # Current = last non-null district value
+        dist_latest = next((v for v in reversed(dist_vals) if v is not None), None)
+        if not dist_latest:
+            tags[dist] = ""
+            continue
+
+        hist_avg = sum(ratios) / len(ratios)
+        current_ratio = dist_latest / city_latest
+
+        if current_ratio < hist_avg * 0.92:
+            tags[dist] = "🚀 Catch-up Potential"
+        elif current_ratio > hist_avg * 1.08:
+            tags[dist] = "💫 Premium Zone"
+        else:
+            tags[dist] = ""
+    return tags
+
+
+def _tag_cluster_flip(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Pillar 6 — Cluster Detection: tag '🔥 Mass Flip' when 3+ actual transactions
+    share the same Address + Date (same plot, same day bulk disposal).
+    """
+    if not {"Address", "Date"}.issubset(df.columns):
+        return df
+    df = df.copy()
+    if "ClusterTag" not in df.columns:
+        df["ClusterTag"] = ""
+
+    # Apply only to actual (non-presale) rows
+    if "Track" in df.columns:
+        mask = df["Track"].astype(str).str.lower() == "actual"
+    else:
+        mask = pd.Series(True, index=df.index)
+
+    if mask.any():
+        counts = (
+            df[mask]
+            .groupby(["Address", "Date"], dropna=True)["Address"]
+            .transform("count")
+        )
+        df.loc[mask & (counts >= 3), "ClusterTag"] = "🔥 Mass Flip"
+    return df
+
 
 # ── Download ───────────────────────────────────────────────────────────────────
 
@@ -326,6 +649,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     # Date → Western quarter label
     if "DateMinguo" in df.columns:
         df["Quarter"] = df["DateMinguo"].apply(minguo_to_quarter)
+        df["Date"] = df["DateMinguo"].apply(minguo_to_date)
 
     # Unit price TWD/sqm → 10k TWD/Ping
     if "UnitPricePerSqm" in df.columns:
@@ -333,12 +657,14 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
             pd.to_numeric(df["UnitPricePerSqm"], errors="coerce")
             .apply(to_ping_price)
         )
+        df["UnitPrice"] = df["PricePerPing"]
 
     # Total price TWD → 10k TWD
     if "TotalPriceTWD" in df.columns:
         df["TotalPrice_10kTWD"] = (
             pd.to_numeric(df["TotalPriceTWD"], errors="coerce") / 10_000
         ).round(1)
+        df["TotalPrice"] = df["TotalPrice_10kTWD"]
 
     # Building type normalization
     if "BuildingTypeRaw" in df.columns:
@@ -347,6 +673,7 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
             .map(BUILDING_NORM)
             .fillna(df["BuildingTypeRaw"])
         )
+        df["Type"] = df["BuildingType"]
 
     # Floor tier
     if "Floor" in df.columns:
@@ -356,6 +683,100 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     if "Address" in df.columns:
         df["Road"] = df["Address"].apply(extract_road)
 
+    # Community: scan Remarks for building/complex name patterns first, then road
+    def _community(row) -> str:
+        rem = str(row.get("Remarks") or "").strip()
+        if rem:
+            m = re.search(
+                r'[\u4e00-\u9fff\w]+(社區|大樓|花園|廣場|園區|名邸|豪宅|苑|閣|庭|軒)',
+                rem
+            )
+            if m:
+                return m.group(0)
+        road = str(row.get("Road") or "").strip()
+        return road if road else ""
+    df["Community"] = df.apply(_community, axis=1)
+
+    # Address + Floor combined display  e.g. "中山北路二段 1~30號 / 5F"
+    def _floor_to_arabic(f: str) -> str:
+        """Convert Chinese floor label to Arabic number + F suffix (三層→3F, 地下層→B1F)."""
+        f = f.strip()
+        if not f or f in ("全", "見使用執照"):
+            return ""
+        if "地下" in f:
+            return "B1F"
+        if "屋頂" in f or "頂樓" in f:
+            return "RF"
+        candidate = re.sub(r"[層，、及和].*", "", f).strip()
+        n = _chinese_to_int(candidate)
+        if n is not None:
+            return f"{n}F"
+        m = re.search(r"\d+", f)
+        return f"{m.group()}F" if m else f
+
+    def _strip_district_prefix(addr: str, district: str) -> str:
+        """Remove leading district name (e.g. '板橋區') from address string."""
+        if district and addr.startswith(district):
+            return addr[len(district):]
+        return addr
+
+    def _addr_floor(row) -> str:
+        addr = str(row.get("Address") or "").strip()
+        district = str(row.get("District") or "").strip()
+        addr = _strip_district_prefix(addr, district)
+        raw_floor = str(row.get("Floor") or "").strip()
+        floor_label = _floor_to_arabic(raw_floor)
+        if addr and floor_label:
+            return f"{addr} / {floor_label}"
+        if addr:
+            return addr
+        return "—"
+    df["AddressFloor"] = df.apply(_addr_floor, axis=1)
+
+    # Special trade tag — any non-empty Remarks flags this as a special transaction
+    if "Remarks" in df.columns:
+        df["SpecialTradeTag"] = df["Remarks"].fillna("").astype(str).str.strip().apply(
+            lambda r: "⚠️ 特殊交易" if r else ""
+        )
+    else:
+        df["SpecialTradeTag"] = ""
+
+    # Total floor area: prefer 建物移轉總面積平方公尺 (× 0.3025), else fall back to 總樓地板面積
+    if "BuildingTransferAreaSqM" in df.columns:
+        transfer_area = pd.to_numeric(df["BuildingTransferAreaSqM"], errors="coerce")
+        df["TotalFloorArea_Ping"] = (transfer_area * 0.3025).round(2)
+    elif "TotalFloorArea" in df.columns:
+        df["TotalFloorArea_Ping"] = (
+            pd.to_numeric(df["TotalFloorArea"], errors="coerce")
+            .apply(sqm_to_ping)
+        )
+
+    # Building age (current year – completion year)
+    current_year = datetime.now().year
+    if "CompletionDateMinguo" in df.columns:
+        df["BuildingAge"] = (
+            pd.to_numeric(df["CompletionDateMinguo"], errors="coerce")
+            .apply(minguo_to_year)
+            .apply(lambda y: current_year - y if y and y > 1900 else None)
+        )
+    else:
+        df["BuildingAge"] = None
+
+    # Total-price display with parking icon  (e.g. "980 🚗" or "880 ❌🚗")
+    if "TotalPrice_10kTWD" in df.columns:
+        def _price_display(row) -> str:
+            price = row.get("TotalPrice_10kTWD")
+            if price is None or (isinstance(price, float) and math.isnan(price)):
+                return "—"
+            has_parking = (
+                (pd.notna(row.get("ParkingType")) and str(row.get("ParkingType", "")).strip() != "")
+                or (pd.notna(row.get("ParkingPriceTWD"))
+                    and float(row.get("ParkingPriceTWD") or 0) > 0)
+            )
+            tag = " 🚗" if has_parking else " ❌🚗"
+            return f"{price:.0f}{tag}"
+        df["TotalPriceDisplay"] = df.apply(_price_display, axis=1)
+
     # Special status tag
     df["Status"] = df.apply(_tag_status, axis=1)
 
@@ -363,10 +784,245 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_presale(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean presale transactions: same pipeline as clean(), also maps ProjectName."""
+    """Clean presale transactions: same pipeline as clean(), adds presale-specific fields."""
     if "建案名稱" in df.columns:
         df = df.rename(columns={"建案名稱": "ProjectName"})
-    return clean(df)
+    df = clean(df)
+
+    # Floor level label  e.g. "16/20F"
+    if "Floor" in df.columns and "TotalFloors" in df.columns:
+        def _floor_label(row) -> str:
+            f = str(row.get("Floor", "") or "").strip()
+            t = str(row.get("TotalFloors", "") or "").strip()
+            if f and t and f not in ("", "全"):
+                return f"{f}/{t}F"
+            return f or "—"
+        df["FloorLevel"] = df.apply(_floor_label, axis=1)
+
+    # Main building ratio %
+    # Priority 1 (Real Data): compute (主建物面積 / 建物移轉總面積) × 100
+    if "MainBuildingArea" in df.columns:
+        main = pd.to_numeric(df["MainBuildingArea"], errors="coerce")
+        if "BuildingTransferAreaSqM" in df.columns:
+            denom = pd.to_numeric(df["BuildingTransferAreaSqM"], errors="coerce")
+        elif "TotalFloorArea" in df.columns:
+            denom = pd.to_numeric(df["TotalFloorArea"], errors="coerce")
+        else:
+            denom = pd.Series(float("nan"), index=df.index)
+        df["MainBuildingRatioPct"] = (main / denom * 100).round(1)
+    elif "MainBuildingRatioPct" in df.columns:
+        # raw 主建物佔比 present — convert decimal ratio (≤1.0) to percentage
+        raw_pct = pd.to_numeric(df["MainBuildingRatioPct"], errors="coerce")
+        ratio_mask = raw_pct.notna() & (raw_pct <= 1.0) & (raw_pct > 0)
+        raw_pct = raw_pct.copy()
+        raw_pct[ratio_mask] = (raw_pct[ratio_mask] * 100).round(1)
+        df["MainBuildingRatioPct"] = raw_pct.round(1)
+    else:
+        df["MainBuildingRatioPct"] = pd.Series(dtype=float)
+
+    # Priority 2 (Project Inference): borrow ratio from same-project row; prefix ~
+    if "ProjectName" in df.columns and "MainBuildingRatioPct" in df.columns:
+        area_num = pd.to_numeric(
+            df.get("BuildingTransferAreaSqM", pd.Series(dtype=float)), errors="coerce"
+        )
+        null_mask = pd.to_numeric(df["MainBuildingRatioPct"], errors="coerce").isna()
+        for idx in df.index[null_mask]:
+            pname = df.at[idx, "ProjectName"]
+            if pd.isna(pname) or not str(pname).strip():
+                continue
+            cands = df[
+                (df["ProjectName"] == pname) &
+                pd.to_numeric(df["MainBuildingRatioPct"], errors="coerce").notna()
+            ]
+            if cands.empty:
+                continue
+            target_area = area_num.at[idx] if idx in area_num.index else float("nan")
+            if pd.isna(target_area):
+                borrowed = cands["MainBuildingRatioPct"].iloc[0]
+            else:
+                closest_idx = (area_num.loc[cands.index] - target_area).abs().idxmin()
+                borrowed = cands.at[closest_idx, "MainBuildingRatioPct"]
+            df.at[idx, "MainBuildingRatioPct"] = f"~{borrowed}"
+
+    # Parking price display  e.g. "地下平面 / 150萬" or "—"
+    if "ParkingType" in df.columns or "ParkingPriceTWD" in df.columns:
+        def _parking_display(row) -> str:
+            ptype = str(row.get("ParkingType") or "").strip()
+            pprice = pd.to_numeric(row.get("ParkingPriceTWD"), errors="coerce")
+            if ptype or (not math.isnan(pprice) if isinstance(pprice, float) else False):
+                price_str = f"{pprice / 10_000:.0f}萬" if not (isinstance(pprice, float) and math.isnan(pprice)) else "—"
+                return f"{ptype} / {price_str}" if ptype else price_str
+            return "—"
+        df["ParkingPriceDisplay"] = df.apply(_parking_display, axis=1)
+
+    # Developer detection from ProjectName keywords.
+    # Fallback: first 3 characters of ProjectName as a builder shorthand.
+    if "ProjectName" in df.columns:
+        def _developer(pname) -> str:
+            if pd.isna(pname) or not str(pname).strip():
+                return "—"
+            name = str(pname).strip()
+            for kw in DEVELOPER_KEYWORDS:
+                if kw in name:
+                    return kw
+            return name[:3] if name else "—"
+        df["Developer"] = df["ProjectName"].apply(_developer)
+    else:
+        df["Developer"] = "—"
+
+    return df
+
+# ── Project info loader & enrichment helpers ─────────────────────────────────
+
+INDIVIDUAL_MARKERS = ["地主", "自然人", "個人", "共有"]
+COMPANY_KEYWORDS   = ["建設", "開發", "建築", "建造", "不動產", "企業", "有限", "股份", "工程", "建業"]
+
+
+def _developer_from_builder(builder: object) -> str:
+    """Convert 起造人 raw string → developer display name or '個體/合作開發'."""
+    if pd.isna(builder) or not str(builder).strip():
+        return "—"
+    name = str(builder).strip()
+    if any(m in name for m in INDIVIDUAL_MARKERS):
+        return "個體/合作開發"
+    has_company = any(k in name for k in COMPANY_KEYWORDS)
+    if not has_company and len(name) <= 4:
+        return "個體/合作開發"
+    return name[:4]
+
+
+def _extract_unit_count(val: object) -> str:
+    """Extract household count from 層棟戶數 (e.g. '2棟120戶' → '120')."""
+    if pd.isna(val) or not str(val).strip():
+        return ""
+    m = re.search(r"(\d+)\s*戶", str(val))
+    if m:
+        return m.group(1)
+    m = re.search(r"\d+", str(val))
+    return m.group() if m else str(val).strip()
+
+
+def _zoning_tag(val: object) -> str:
+    """Map 使用分區 raw text → short tag: 住 / 商 / first-4-chars for others."""
+    if pd.isna(val) or not str(val).strip():
+        return ""
+    s = str(val).strip()
+    if "住" in s:
+        return "住"
+    if "商" in s:
+        return "商"
+    return s[:4] if s else ""
+
+
+def load_project_info(city_name: str) -> Optional[pd.DataFrame]:
+    """Load optional project info CSV from PROJ_INFO_DIR/{city_name}.csv."""
+    path = PROJ_INFO_DIR / f"{city_name}.csv"
+    if not path.exists():
+        return None
+    for enc in ("utf-8-sig", "utf-8", "big5", "cp950"):
+        try:
+            df = pd.read_csv(path, encoding=enc, low_memory=False)
+            if "建案名稱" in df.columns:
+                df["建案名稱"] = df["建案名稱"].astype(str).str.strip()
+            log.info("  Loaded project_info/%s.csv (%d entries)", city_name, len(df))
+            return df
+        except (UnicodeDecodeError, LookupError):
+            continue
+    log.warning("  project_info/%s.csv unreadable — skipping", city_name)
+    return None
+
+
+def merge_project_info(presale_df: pd.DataFrame, proj_info: pd.DataFrame) -> pd.DataFrame:
+    """Left join presale transactions with project info on ProjectName = 建案名稱.
+
+    BuilderName and ProjectScaleRaw come only from project_info CSV.
+    Zoning: MOI native column (都市土地使用分區) is baseline; CSV 使用分區 overrides when non-empty.
+    """
+    # CSV 使用分區 → Zoning_pi (so it doesn't clobber MOI-sourced Zoning)
+    col_map = {"起造人": "BuilderName", "層棟戶數": "ProjectScaleRaw", "使用分區": "Zoning_pi"}
+    proj = proj_info.copy()
+    if "建案名稱" not in proj.columns:
+        log.warning("  project_info missing '建案名稱' column — skipping merge")
+        return presale_df
+    proj = proj.rename(columns={k: v for k, v in col_map.items() if k in proj.columns})
+    keep = ["建案名稱"] + [v for v in col_map.values() if v in proj.columns]
+    proj = proj[[c for c in keep if c in proj.columns]].drop_duplicates(subset=["建案名稱"])
+    merged = presale_df.merge(proj, left_on="ProjectName", right_on="建案名稱", how="left")
+    if "建案名稱" in merged.columns:
+        merged = merged.drop(columns=["建案名稱"])
+    # Resolve final Zoning: CSV override wins when non-empty, else keep MOI native
+    if "Zoning_pi" in merged.columns:
+        moi_zone = merged.get("Zoning", pd.Series("", index=merged.index)).fillna("")
+        csv_zone = merged["Zoning_pi"].fillna("")
+        merged["Zoning"] = csv_zone.where(csv_zone.astype(str).str.strip() != "", moi_zone)
+        merged = merged.drop(columns=["Zoning_pi"])
+    return merged
+
+
+# ── V2 IQR purifier & DOM proxy ──────────────────────────────────────────────
+
+def iqr_filter_citywide(df: pd.DataFrame) -> pd.DataFrame:
+    """Hard-remove rows outside the city-wide 5th–95th percentile of PricePerPing."""
+    if "PricePerPing" not in df.columns or df.empty:
+        return df
+    prices = pd.to_numeric(df["PricePerPing"], errors="coerce").dropna()
+    if prices.empty:
+        return df
+    lo = prices.quantile(IQR_LOW)
+    hi = prices.quantile(IQR_HIGH)
+    pp = pd.to_numeric(df["PricePerPing"], errors="coerce")
+    return df[(pp >= lo) & (pp <= hi)].copy()
+
+
+def compute_dom_proxy(
+    df_actual: pd.DataFrame,
+    df_presale: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """
+    Add DOM_Proxy (estimated holding months) and DOM_Tag to actual-transaction rows.
+    Method 1: Address-match to presale → date gap in months.
+    Method 2: BuildingAge fallback (age × 12) when age ≤ 5 yrs.
+    Tags ⚠️ Short-term when estimated holding < 24 months.
+    """
+    df = df_actual.copy()
+    df["DOM_Proxy"] = pd.NA
+    df["DOM_Tag"]   = ""
+
+    if (
+        df_presale is not None and not df_presale.empty
+        and "Address" in df_presale.columns and "Date" in df_presale.columns
+    ):
+        ps = df_presale.dropna(subset=["Address", "Date"]).copy()
+        ps["_ak"] = ps["Address"].astype(str).str.strip().str.lower().str[:40]
+        ps["_dt"] = pd.to_datetime(ps["Date"], format="%Y/%m/%d", errors="coerce")
+        ps_map = (
+            ps.dropna(subset=["_dt"])
+            .sort_values("_dt")
+            .groupby("_ak")["_dt"]
+            .first()
+        )
+        df["_ak"]  = df["Address"].astype(str).str.strip().str.lower().str[:40]
+        df["_adt"] = pd.to_datetime(df["Date"], format="%Y/%m/%d", errors="coerce")
+        df["_pdt"] = df["_ak"].map(ps_map)
+        matched   = df["_pdt"].notna() & df["_adt"].notna()
+        diff_days = (df.loc[matched, "_adt"] - df.loc[matched, "_pdt"]).dt.days
+        df.loc[matched, "DOM_Proxy"] = (
+            (diff_days / 30.44).round(0).astype("Int64")
+        )
+        df.drop(columns=["_ak", "_adt", "_pdt"], errors="ignore", inplace=True)
+
+    if "BuildingAge" in df.columns:
+        age     = pd.to_numeric(df["BuildingAge"], errors="coerce")
+        no_dom  = df["DOM_Proxy"].isna()
+        age_dom = (age.where((age >= 0) & (age <= 5)) * 12).round(0)
+        df.loc[no_dom & age_dom.notna(), "DOM_Proxy"] = (
+            age_dom.loc[no_dom & age_dom.notna()].astype("Int64")
+        )
+
+    dom_num = pd.to_numeric(df["DOM_Proxy"], errors="coerce")
+    df.loc[dom_num < 24, "DOM_Tag"] = "⚠️ Short-term"
+    return df
+
 
 # ── Trend computation ──────────────────────────────────────────────────────────
 
@@ -437,6 +1093,138 @@ def compute_trend(df: pd.DataFrame) -> pd.DataFrame:
     agg.loc[low_n, ["QoQ_pct", "YoY_pct"]] = float("nan")
 
     return agg
+
+
+def compute_v2_summary_extras(
+    summary: pd.DataFrame,
+    ts: dict,
+    pts: Optional[dict],
+    df_with_dom: pd.DataFrame,
+    city_name: str = "",
+) -> pd.DataFrame:
+    """
+    Augment quarterly summary with v2/v3 columns:
+    MarketTemp, QuickSalePrice, PremiumGap_pct,
+    OracleNextMedian, OracleTrend, ShortTermCount, ShortTermRatioPct,
+    PriceToRentRatio, RentalAnchorLabel, LeverageFlag.
+    """
+    if summary.empty:
+        return summary
+    s = summary.copy()
+
+    s["MarketTemp"]    = s["YoY_pct"].apply(market_temp_label)
+    s["QuickSalePrice"] = (s["MedianPricePerPing"] * 0.93).round(2)
+
+    # PremiumGap: presale vs actual median per district per quarter
+    if pts and pts.get("districts") and ts.get("quarters"):
+        ps_q_idx = {q: i for i, q in enumerate(pts.get("quarters", []))}
+
+        def _gap(row):
+            d   = row["District"]
+            act = row["MedianPricePerPing"]
+            if d not in pts["districts"] or not act or pd.isna(act):
+                return float("nan")
+            i = ps_q_idx.get(row["Quarter"])
+            if i is None:
+                return float("nan")
+            ps_series = pts["districts"][d]
+            if i >= len(ps_series) or ps_series[i] is None:
+                return float("nan")
+            return round((ps_series[i] - act) / act * 100, 2)
+
+        s["PremiumGap_pct"] = s.apply(_gap, axis=1)
+    else:
+        s["PremiumGap_pct"] = float("nan")
+
+    # Oracle per district — with city-level fallback for low-N districts
+    oracle_map: dict = {}
+    if ts.get("districts") and ts.get("quarters"):
+        all_q = ts["quarters"]
+        # Compute city-level forecast first so it can be used as fallback
+        city_fp, city_ft = oracle_forecast_city(ts, pts)
+        # If city forecast is still None (< 2 quarters total), use last city median
+        if city_fp is None:
+            city_latest_vals = [v for v in ts.get("city_median", []) if v is not None]
+            city_fp = city_latest_vals[-1] if city_latest_vals else None
+        for dist, act_series in ts["districts"].items():
+            ps_s = pts["districts"].get(dist, []) if pts and pts.get("districts") else []
+            op, ot = oracle_forecast_district(
+                act_series, all_q, ps_s or None,
+                city_fallback_price=city_fp,
+                city_fallback_trend=city_ft,
+            )
+            # Scale fallback by district's own latest price ratio to city
+            if op is not None and op == city_fp:
+                act_vals = [v for v in act_series if v is not None]
+                city_m   = [v for v in ts.get("city_median", []) if v is not None]
+                if act_vals and city_m and city_m[-1]:
+                    ratio = act_vals[-1] / city_m[-1]
+                    op = round(city_fp * ratio, 2)
+            oracle_map[dist] = (op, ot)
+
+    s["OracleNextMedian"] = s["District"].map(
+        lambda d: oracle_map.get(d, (None, "→"))[0]
+    )
+    s["OracleTrend"] = s["District"].map(
+        lambda d: oracle_map.get(d, (None, "→"))[1]
+    )
+
+    # Short-term ratios from DOM-tagged rows
+    if (
+        "DOM_Tag" in df_with_dom.columns
+        and "Quarter" in df_with_dom.columns
+        and "District" in df_with_dom.columns
+    ):
+        st = (
+            df_with_dom
+            .groupby(["District", "Quarter"])
+            .apply(
+                lambda g: pd.Series({
+                    "ShortTermCount":    int((g["DOM_Tag"] == "⚠️ Short-term").sum()),
+                    "ShortTermRatioPct": round(
+                        (g["DOM_Tag"] == "⚠️ Short-term").mean() * 100, 1
+                    ),
+                })
+            )
+            .reset_index()
+        )
+        s = s.merge(st, on=["District", "Quarter"], how="left")
+        s["ShortTermCount"]    = s["ShortTermCount"].fillna(0).astype(int)
+        s["ShortTermRatioPct"] = s["ShortTermRatioPct"].fillna(0.0)
+    else:
+        s["ShortTermCount"]    = 0
+        s["ShortTermRatioPct"] = 0.0
+
+    # V3 — Pillar 5: Rental Anchor
+    # For sparse districts with no transactions, fall back to city median for that quarter
+    _city_med_by_q = dict(zip(ts.get("quarters", []), ts.get("city_median", [])))
+    def _effective_price(row):
+        p = row["MedianPricePerPing"]
+        if pd.notna(p) and p > 0:
+            return p
+        return _city_med_by_q.get(row["Quarter"])
+    s["PriceToRentRatio"] = s.apply(
+        lambda row: compute_rental_anchor(_effective_price(row), city_name), axis=1
+    )
+    s["RentalAnchorLabel"] = s["PriceToRentRatio"].apply(rental_anchor_label)
+
+    # V3 — Pillar 2: Confidence Leverage flag (🔴 if presale premium > 25 %)
+    def _lev_flag(gap):
+        try:
+            v = float(gap)
+        except (TypeError, ValueError):
+            return "⚪ N/A"
+        if math.isnan(v):
+            return "⚪ N/A"
+        if v > 25:
+            return "🔴 High"
+        if v > 10:
+            return "🟡 Elevated"
+        return "🟢 Normal"
+
+    s["LeverageFlag"] = s["PremiumGap_pct"].apply(_lev_flag)
+
+    return s
 
 
 def export_timeseries(city_name: str, df: pd.DataFrame) -> None:
@@ -610,6 +1398,93 @@ def export_presale_timeseries(city_name: str, df: pd.DataFrame) -> None:
     )
 
 
+def export_v2_insights(
+    city_name: str,
+    summary_v2: pd.DataFrame,
+    ts: dict,
+    pts: Optional[dict],
+) -> None:
+    """Write data/processed/{City}/v2_insights.json for the forecast card."""
+    city_dir = OUTPUT_DIR / city_name
+
+    def _v(val):
+        if val is None:
+            return None
+        try:
+            if pd.isna(val):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return round(float(val), 2) if isinstance(val, float) else val
+
+    # V3 — Pillar 4: Ripple Effect tags
+    ripple_tags = compute_ripple_tags(ts)
+
+    insights: dict = {}
+    if not summary_v2.empty and "District" in summary_v2.columns:
+        latest = (
+            summary_v2.sort_values("Quarter", ascending=False)
+            .groupby("District")
+            .first()
+            .reset_index()
+        )
+        for _, row in latest.iterrows():
+            d = str(row["District"])
+            insights[d] = {
+                "latest_quarter":       str(row.get("Quarter") or ""),
+                "actual_median":        _v(row.get("MedianPricePerPing")),
+                "oracle_next_median":   _v(row.get("OracleNextMedian")),
+                "oracle_trend":         str(row.get("OracleTrend") or "→"),
+                "market_temp":          str(row.get("MarketTemp") or "⚪ N/A"),
+                "quick_sale_price":     _v(row.get("QuickSalePrice")),
+                "premium_gap_pct":      _v(row.get("PremiumGap_pct")),
+                "short_term_count":     int(row.get("ShortTermCount") or 0),
+                "short_term_ratio_pct": float(row.get("ShortTermRatioPct") or 0.0),
+                "transaction_count":    int(row.get("TransactionCount") or 0),
+                # V3 fields
+                "price_to_rent":        _v(row.get("PriceToRentRatio")),
+                "rental_anchor_label":  str(row.get("RentalAnchorLabel") or "⚪ N/A"),
+                "leverage_flag":        str(row.get("LeverageFlag") or "⚪ N/A"),
+                "ripple_tag":           ripple_tags.get(d, ""),
+            }
+
+    def _lnn(series):
+        for v in reversed(series):
+            if v is not None:
+                return v
+        return None
+
+    act_med = _lnn(ts.get("city_median", []))
+    ps_med  = _lnn(pts.get("city_median", [])) if pts else None
+    city_gap = round((ps_med - act_med) / act_med * 100, 2) \
+               if act_med and ps_med else None
+    oracle_p, oracle_t = oracle_forecast_city(ts, pts)
+    qm = ts.get("city_median", [])
+    city_yoy = None
+    if len(qm) >= 5 and qm[-1] and qm[-5]:
+        city_yoy = round((qm[-1] - qm[-5]) / qm[-5] * 100, 2)
+
+    payload = {
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "city": city_name,
+        "city_forecast": {
+            "actual_median":      act_med,
+            "presale_median":     ps_med,
+            "premium_gap_pct":    city_gap,
+            "oracle_next_median": oracle_p,
+            "oracle_trend":       oracle_t,
+            "market_temp":        market_temp_label(city_yoy),
+            "quick_sale_price":   round(act_med * 0.93, 2) if act_med else None,
+        },
+        "districts": insights,
+    }
+    (city_dir / "v2_insights.json").write_text(
+        json.dumps(payload, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    log.info("  Wrote v2_insights.json (%d districts)", len(insights))
+
+
 # ── Export ─────────────────────────────────────────────────────────────────────
 
 def _safe_name(s: str) -> str:
@@ -617,46 +1492,177 @@ def _safe_name(s: str) -> str:
     return re.sub(r"[^\w\u4e00-\u9fff]", "_", str(s)).strip("_") or "unknown"
 
 
-def export_city(city_name: str, df: pd.DataFrame) -> list:
+def _write_district_snapshot(city_dir: Path, district: str, df: pd.DataFrame) -> dict:
+    safe = _safe_name(str(district))
+    out = city_dir / f"{safe}{V3_SNAPSHOT_SUFFIX}"
+    snapshot = df.copy()
+    # V3 — Pillar 6: Cluster Detection
+    snapshot = _tag_cluster_flip(snapshot)
+    snapshot.to_parquet(out, index=False, compression="zstd")
+
+    if "Date" in snapshot.columns:
+        date_series = pd.to_datetime(snapshot["Date"], errors="coerce").dropna()
+        date_min = date_series.min().strftime("%Y-%m-%d") if not date_series.empty else None
+        date_max = date_series.max().strftime("%Y-%m-%d") if not date_series.empty else None
+    else:
+        date_min = None
+        date_max = None
+
+    tracks = []
+    if "Track" in snapshot.columns:
+        tracks = sorted({str(x) for x in snapshot["Track"].dropna().unique()})
+
+    return {
+        "district": district,
+        "file": out.name,
+        "rows": int(len(snapshot)),
+        "date_min": date_min,
+        "date_max": date_max,
+        "tracks": tracks,
+    }
+
+
+def export_city(city_name: str, df: pd.DataFrame,
+                presale_df: Optional[pd.DataFrame] = None) -> list:
     """
-    Write two output layers for one city:
-      data/{City}/{District}.csv  — cleaned transaction detail rows
-      data/{City}/summary.csv     — quarterly QoQ/YoY trend summary
+    Write v2 output layers for one city to data/processed/{City}/:
+      {District}.csv    — Dual-track merged (Actual + Presale) with v2 AI fields
+      summary.csv       — Quarterly trend + OracleNextMedian/MarketTemp/QuickSalePrice
+      v2_insights.json  — City-level forecast card data
     Returns the list of district names written.
     """
     city_dir = OUTPUT_DIR / city_name
     city_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_meta = {
+        "city": city_name,
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "snapshot_format": "parquet",
+        "snapshot_suffix": V3_SNAPSHOT_SUFFIX,
+        "districts": [],
+    }
 
-    # ── Detail layer ──────────────────────────────────────────────────────────
-    detail_cols = [c for c in DETAIL_COLS if c in df.columns]
+    # ── Step 1: IQR purifier (city-wide 5 %–95 % hard filter) ────────────────
+    df = iqr_filter_citywide(df)
+    if presale_df is not None and not presale_df.empty:
+        presale_df = iqr_filter_citywide(presale_df)
+        proj_info = load_project_info(city_name)
+        if proj_info is not None:
+            presale_df = merge_project_info(presale_df, proj_info)
+
+    # ── Step 2: DOM proxy (address-match + building-age fallback) ─────────────
+    df = compute_dom_proxy(df, presale_df)
+
+    # ── Step 3: Parking-status column helper ──────────────────────────────────
+    def _ps(row) -> str:
+        has = (
+            (pd.notna(row.get("ParkingType")) and str(row.get("ParkingType", "")).strip())
+            or (pd.notna(row.get("ParkingPriceTWD"))
+                and float(row.get("ParkingPriceTWD") or 0) > 0)
+        )
+        return "✅ Has Parking" if has else "—"
+
+    # ── Step 4: Build merged dual-track district CSVs ─────────────────────────
     districts: list[str] = []
-
     if "District" in df.columns:
-        for dist, grp in df.groupby("District"):
-            safe = _safe_name(str(dist))
-            grp[detail_cols].to_csv(
-                city_dir / f"{safe}.csv",
-                index=False,
-                encoding="utf-8-sig",
+        act = df.copy()
+        act["Track"]         = "Actual"
+        act["ProjectName"]   = act.get("ProjectName", "")
+        act["ParkingStatus"] = act.apply(_ps, axis=1)
+        act["ProjectScale"]  = ""
+        act["ZoningTag"]     = ""
+
+        ps_ready = None
+        if (
+            presale_df is not None and not presale_df.empty
+            and "District" in presale_df.columns
+        ):
+            ps_ready = presale_df.copy()
+            ps_ready["Track"]         = "Presale"
+            ps_ready["DOM_Proxy"]     = pd.NA
+            ps_ready["DOM_Tag"]       = ""
+            ps_ready["Status"]        = ps_ready.get("Status", "")
+            ps_ready["ParkingStatus"] = ps_ready.apply(_ps, axis=1)
+            # Project info enrichments (populated when project info CSV was merged)
+            if "BuilderName" in ps_ready.columns:
+                ps_ready["Developer"] = ps_ready["BuilderName"].apply(_developer_from_builder)
+            if "ProjectScaleRaw" in ps_ready.columns:
+                ps_ready["ProjectScale"] = ps_ready["ProjectScaleRaw"].apply(_extract_unit_count)
+            elif "ProjectScale" not in ps_ready.columns:
+                ps_ready["ProjectScale"] = ""
+            if "Zoning" in ps_ready.columns:
+                ps_ready["ZoningTag"] = ps_ready["Zoning"].apply(_zoning_tag)
+            elif "ZoningTag" not in ps_ready.columns:
+                ps_ready["ZoningTag"] = ""
+            # Always override Community with ProjectName for presale rows
+            project_col = ps_ready.get("ProjectName", pd.Series("", index=ps_ready.index))
+            district_col = ps_ready.get("District", pd.Series("", index=ps_ready.index))
+            ps_ready["Community"] = project_col.fillna("").where(
+                project_col.fillna("").astype(str).str.strip() != "",
+                district_col.fillna("")
             )
+            if "Road" not in ps_ready.columns:
+                ps_ready["Road"] = (
+                    ps_ready["Address"].apply(extract_road)
+                    if "Address" in ps_ready.columns else ""
+                )
+
+        for dist, grp in act.groupby("District"):
+            safe    = _safe_name(str(dist))
+            act_out = grp.copy()
+            for c in V2_MERGED_COLS:
+                if c not in act_out.columns:
+                    act_out[c] = ""
+            frames = [act_out[V2_MERGED_COLS]]
+
+            if ps_ready is not None:
+                ps_grp = ps_ready[ps_ready["District"] == dist].copy()
+                if not ps_grp.empty:
+                    for c in V2_MERGED_COLS:
+                        if c not in ps_grp.columns:
+                            ps_grp[c] = ""
+                    frames.append(ps_grp[V2_MERGED_COLS])
+
+            combined = pd.concat(frames, ignore_index=True)
+            if "Date" in combined.columns:
+                combined = combined.sort_values(
+                    ["Track", "Date"], ascending=[True, False], na_position="last"
+                )
+            combined.to_csv(
+                city_dir / f"{safe}.csv", index=False, encoding="utf-8-sig"
+            )
+            snapshot_meta["districts"].append(_write_district_snapshot(city_dir, dist, combined))
             districts.append(safe)
 
-    # ── Summary layer ─────────────────────────────────────────────────────────
+    # ── Step 5: Timeseries JSON (needed for oracle + insight computation) ──────
+    export_timeseries(city_name, df)
+    ts_path = city_dir / "timeseries.json"
+    ts = json.loads(ts_path.read_text(encoding="utf-8")) if ts_path.exists() else {}
+
+    pts = None
+    if presale_df is not None and not presale_df.empty:
+        export_presale_timeseries(city_name, presale_df)
+        pts_path = city_dir / "presale_timeseries.json"
+        pts = json.loads(pts_path.read_text(encoding="utf-8")) if pts_path.exists() else None
+
+    # ── Step 6: v2-enhanced summary.csv + v2_insights.json ───────────────────
     summary = compute_trend(df)
     if not summary.empty:
-        summary.to_csv(
-            city_dir / "summary.csv",
-            index=False,
-            encoding="utf-8-sig",
+        summary_v2 = compute_v2_summary_extras(summary, ts, pts, df, city_name)
+        summary_v2.to_csv(
+            city_dir / "summary.csv", index=False, encoding="utf-8-sig"
+        )
+        export_v2_insights(city_name, summary_v2, ts, pts)
+        (city_dir / "snapshot_meta.json").write_text(
+            json.dumps(snapshot_meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
         log.info(
             "  %s: %d districts, %d summary rows",
-            city_name, len(districts), len(summary),
+            city_name, len(districts), len(summary_v2),
         )
     else:
         log.warning("  %s: no summary data produced", city_name)
 
-    export_timeseries(city_name, df)
     return districts
 
 
@@ -664,11 +1670,13 @@ def export_manifest(city_districts: dict) -> None:
     """Write data/manifest.json so the dashboard knows what files exist."""
     manifest = {
         "generated": datetime.now(timezone.utc).isoformat(),
+        "snapshot_format": "parquet",
         "cities": {
             code: {
                 "folder":    CITY_MAP[code][0],
                 "name":      CITY_MAP[code][1],
                 "districts": city_districts.get(CITY_MAP[code][0], []),
+                "snapshot_suffix": V3_SNAPSHOT_SUFFIX,
             }
             for code in CITY_MAP
         },
@@ -681,16 +1689,24 @@ def export_manifest(city_districts: dict) -> None:
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
-def run(local_dir: Optional[Path] = None) -> None:
+def run(local_dir: Optional[Path] = None,
+        pilot_codes: Optional[list] = None) -> None:
     """
-    local_dir: if provided, reads pre-downloaded CSVs from that directory
-               (filenames: a_lvr_land_a.csv, f_lvr_land_a.csv, …)
-               instead of fetching from the MOI server.
+    local_dir:   if provided, reads pre-downloaded CSVs from that directory
+                 (filenames: a_lvr_land_a.csv, f_lvr_land_a.csv, …)
+                 instead of fetching from the MOI server.
+    pilot_codes: list of city codes to process (e.g. ['A'] for Taipei-only).
+                 None means all cities in CITY_MAP.
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     city_districts: dict = {}
 
-    for code, (city_name, _) in CITY_MAP.items():
+    active_map = {
+        k: v for k, v in CITY_MAP.items()
+        if pilot_codes is None or k in pilot_codes
+    }
+
+    for code, (city_name, _) in active_map.items():
         log.info("Processing city %s (%s) …", code, city_name)
 
         if local_dir:
@@ -716,18 +1732,23 @@ def run(local_dir: Optional[Path] = None) -> None:
         df = clean(df)
         log.info("  Cleaned: %d rows", len(df))
 
-        districts = export_city(city_name, df)
-        city_districts[city_name] = districts
-
-        # Presale transactions (_b.csv)
+        # Presale transactions (_b.csv) — fetch before export so detail goes in together
+        presale_df: Optional[pd.DataFrame] = None
         try:
-            presale_raw = download_presale_csv(code)
-            presale_df = read_presale_csv_bytes(presale_raw)
-            log.info("  Presale: %d rows after early filter", len(presale_df))
-            presale_df = clean_presale(presale_df)
-            export_presale_timeseries(city_name, presale_df)
+            if local_dir:
+                presale_path = local_dir / f"{code.lower()}_lvr_land_b.csv"
+                presale_raw = presale_path.read_bytes() if presale_path.exists() else None
+            else:
+                presale_raw = download_presale_csv(code)
+            if presale_raw:
+                presale_df = read_presale_csv_bytes(presale_raw)
+                log.info("  Presale: %d rows after early filter", len(presale_df))
+                presale_df = clean_presale(presale_df)
         except Exception as exc:
             log.warning("  Presale skipped for %s: %s", code, exc)
+
+        districts = export_city(city_name, df, presale_df=presale_df)
+        city_districts[city_name] = districts
 
     export_manifest(city_districts)
 
@@ -878,9 +1899,16 @@ if __name__ == "__main__":
         "--seasons", nargs="+", metavar="SEASON",
         help="Specific seasons to backfill, e.g. --seasons 112S1 113S2 114S4",
     )
+    parser.add_argument(
+        "--pilot", nargs="+", metavar="CODE",
+        help=(
+            "Limit live run to specific city codes, e.g. --pilot A  (Taipei only). "
+            "Codes: A=Taipei F=New_Taipei H=Taoyuan B=Taichung D=Tainan E=Kaohsiung"
+        ),
+    )
     args = parser.parse_args()
 
     if args.backfill or args.seasons:
         run_backfill(seasons=args.seasons)
     else:
-        run(local_dir=args.local_dir)
+        run(local_dir=args.local_dir, pilot_codes=args.pilot)

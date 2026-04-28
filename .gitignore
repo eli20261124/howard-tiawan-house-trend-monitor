@@ -1,8 +1,24 @@
 # Python
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa*
+
+# Generated data artifacts
+data/**/*.csv
+data/**/*.parquet
 
 # Temp / runtime artifacts
 /tmp/

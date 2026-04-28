@@ -1,0 +1,75 @@
+name: Daily Taipei Sync
+
+on:
+  schedule:
+    # Daily at 02:00 UTC = 10:00 AM Taipei Time (UTC+8)
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  daily-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Change detection — check MOI ETag
+        id: etag_check
+        run: |
+          NEW_ETAG=$(curl -sI --max-time 10 \
+            "https://plvr.land.moi.gov.tw/Download?fileName=a_lvr_land_a.csv" \
+            | grep -i "^etag\|^last-modified" | tr -d '\r' | sort | sha256sum | cut -c1-16)
+          CACHED=$(cat data/.etag_cache 2>/dev/null || echo "none")
+          echo "new=${NEW_ETAG}" >> "$GITHUB_OUTPUT"
+          echo "cached=${CACHED}"  >> "$GITHUB_OUTPUT"
+          if [ "$NEW_ETAG" = "$CACHED" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No MOI data change detected — skipping pipeline."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "MOI data changed — running pipeline."
+          fi
+
+      - name: Install dependencies
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: pip install -r requirements.txt
+
+      - name: Run full 6-city pipeline
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: python main.py
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - name: Update ETag cache
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: echo "${{ steps.etag_check.outputs.new }}" > data/.etag_cache
+
+      - name: Commit updated data
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --staged --quiet \
+            || git commit -m "auto: update taipei data $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push
