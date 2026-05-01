@@ -339,6 +339,65 @@ def district_rows(
     }
 
 
+@app.get("/api/{city}/districts/{district}/projects")
+def district_projects(
+    city: str,
+    district: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    sort_by: str = Query("Date"),
+    sort_dir: str = Query("desc"),
+) -> dict:
+    """Return one representative row per presale project for the Pre-sale Explorer tab.
+
+    Groups presale transactions by ProjectName, keeps the most recent row per project,
+    and returns project-level fields suitable for the LVR-style project explorer UI.
+    """
+    PROJECT_FIELDS = [
+        "ProjectName", "Road", "Developer", "ProjectScale", "ZoningTag",
+        "TotalFloors", "FloorLevel", "AddressFloor", "Address",
+        "PricePerPing", "TotalPrice_10kTWD", "MainBuildingRatioPct", "Date", "District",
+    ]
+    df = _load_snapshot(city, district)
+
+    # Filter to presale track only
+    if "Track" in df.columns:
+        df = df[df["Track"].astype(str).str.lower() == "presale"].copy()
+
+    if df.empty:
+        return {
+            "city": _city_folder(city), "district": district,
+            "page": page, "page_size": page_size, "records_total": 0,
+            "items": [],
+        }
+
+    # Sort so most recent transaction per project ends up as the representative row
+    if sort_by in df.columns:
+        ascending = sort_dir.lower() != "desc"
+        df = df.sort_values(sort_by, ascending=ascending, na_position="last")
+
+    # Deduplicate by ProjectName, keeping the most-recently-sorted row
+    if "ProjectName" in df.columns:
+        df = df.drop_duplicates(subset=["ProjectName"], keep="first")
+
+    # Restrict to fields the explorer UI needs
+    keep = [f for f in PROJECT_FIELDS if f in df.columns]
+    df = df[keep].reset_index(drop=True)
+
+    total = len(df)
+    start = (page - 1) * page_size
+    items = df.iloc[start: start + page_size].reset_index(drop=True)
+
+    return {
+        "city": _city_folder(city),
+        "district": district,
+        "page": page,
+        "page_size": page_size,
+        "records_total": total,
+        "items": _df_records(items),
+    }
+
+
 @app.get("/api/{city}/health-tiles")
 def health_tiles(city: str) -> dict:
     """

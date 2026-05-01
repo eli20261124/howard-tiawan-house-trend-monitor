@@ -1,9 +1,9 @@
 name: Daily Taipei Sync
 
+# Kept as a manual-only fallback workflow.
+# The authoritative daily schedule is in update_data.yml (cron: 0 2 * * *).
+# Enabling the schedule here was removed to prevent duplicate 10:00 AM TST runs.
 on:
-  schedule:
-    # Daily at 02:00 UTC = 10:00 AM Taipei Time (UTC+8)
-    - cron: "0 2 * * *"
   workflow_dispatch:
 
 permissions:

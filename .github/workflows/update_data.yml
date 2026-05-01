@@ -2,8 +2,8 @@ name: Update Real Estate Data
 
 on:
   schedule:
-    - cron: "0 2 * * *"
-  workflow_dispatch:
+    - cron: "0 2 * * *"   # daily 02:00 UTC = 10:00 AM Taipei Time (UTC+8)
+  workflow_dispatch: {}    # allows manual trigger from the GitHub Actions tab
 
 permissions:
   contents: write  # required to commit updated data back to the repo
@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # ── 1. Fetch ──────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -27,21 +28,83 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Change detection — check MOI ETag
+        id: etag_check
+        run: |
+          NEW_ETAG=$(curl -sI --max-time 10 \
+            "https://plvr.land.moi.gov.tw/Download?fileName=a_lvr_land_a.csv" \
+            | grep -i "^etag\|^last-modified" | tr -d '\r' | sort | sha256sum | cut -c1-16)
+          CACHED=$(cat data/.etag_cache 2>/dev/null || echo "none")
+          echo "new=${NEW_ETAG}"     >> "$GITHUB_OUTPUT"
+          echo "cached=${CACHED}"   >> "$GITHUB_OUTPUT"
+          if [ "$NEW_ETAG" = "$CACHED" ]; then
+            echo "changed=false"    >> "$GITHUB_OUTPUT"
+            echo "No MOI data change detected — skipping pipeline."
+          else
+            echo "changed=true"     >> "$GITHUB_OUTPUT"
+            echo "MOI data changed — running pipeline."
+          fi
+
       - name: Install dependencies
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run pipeline
+      # ── 2. Clean ──────────────────────────────────────────────────────────
+      - name: Run full 6-city pipeline
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: python main.py
         env:
           PYTHONUNBUFFERED: "1"
 
+      # ── 3. Generate & verify sample_debug.json ────────────────────────────
+      # The pipeline writes sample_debug.json at the end of run().
+      # This step fails the workflow if the file is absent or malformed,
+      # preventing corrupted / incomplete data from being deployed.
+      - name: Verify sample_debug.json
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -e
+          FILE="data/processed/sample_debug.json"
+          if [ ! -f "$FILE" ]; then
+            echo "::error::sample_debug.json was not generated — aborting deployment."
+            exit 1
+          fi
+          python - <<'EOF'
+          import json, sys
+          try:
+              data = json.load(open("data/processed/sample_debug.json"))
+              actual  = data.get("actual_samples", [])
+              presale = data.get("presale_samples", [])
+              if not actual and not presale:
+                  print("::error::sample_debug.json contains no sample rows.")
+                  sys.exit(1)
+              print(f"OK — {len(actual)} actual, {len(presale)} presale sample rows verified.")
+          except Exception as e:
+              print(f"::error::sample_debug.json parse error: {e}")
+              sys.exit(1)
+          EOF
+
+      # ── 4. Deploy ─────────────────────────────────────────────────────────
+      - name: Update ETag cache
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: echo "${{ steps.etag_check.outputs.new }}" > data/.etag_cache
+
       - name: Commit refreshed data
+        if: steps.etag_check.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          find data/processed -name "*.json" | xargs git add --
+          git add data/
           git diff --staged --quiet \
             || git commit -m "auto: refresh data $(date -u +'%Y-%m-%d %H:%M UTC')"
           git push

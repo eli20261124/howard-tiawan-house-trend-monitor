@@ -44,6 +44,8 @@ CITY_MAP = {
     "B": ("Taichung",   "台中市"),
     "D": ("Tainan",     "台南市"),
     "E": ("Kaohsiung",  "高雄市"),
+    "O": ("Hsinchu",    "新竹市"),
+    "C": ("Keelung",    "基隆市"),
 }
 
 def city_csv_url(code: str) -> str:
@@ -69,12 +71,22 @@ PROJ_INFO_DIR = Path("data/project_info")
 # Historical seasonal download — national ZIP (~80–120 MB each)
 HIST_URL = f"{BASE_URL}/DownloadHistory?type=season&fileName="
 
-# Seasons to backfill: Minguo 112 = 2023 CE, 113 = 2024, 114 = 2025
-BACKFILL_SEASONS = [
-    "112S1", "112S2", "112S3", "112S4",   # 2023
-    "113S1", "113S2", "113S3", "113S4",   # 2024
-    "114S1", "114S2", "114S3", "114S4",   # 2025
-]
+def _default_backfill_seasons() -> list:
+    """Return season codes covering the rolling last-3-year window from today."""
+    now = datetime.now()
+    cutoff = now - timedelta(days=3 * 365)
+    seasons: list = []
+    for year in range(cutoff.year, now.year + 1):
+        for q in range(1, 5):
+            q_start_month = (q - 1) * 3 + 1
+            # Skip quarters that end entirely before the cutoff
+            if year == cutoff.year and q_start_month + 2 < cutoff.month:
+                continue
+            # Skip quarters that haven't started yet
+            if year == now.year and q_start_month > now.month:
+                break
+            seasons.append(f"{year - 1911}S{q}")
+    return seasons
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -90,8 +102,9 @@ log = logging.getLogger(__name__)
 COL = {
     "鄉鎮市區":               "District",
     "交易標的":               "TransactionType",
-    "土地區段位置或建物門牌":    "Address",
-    "土地區段位置建物區段門牌":   "Address",
+    "土地位置建物門牌":           "Address",  # current MOI format (2024-onwards)
+    "土地區段位置或建物門牌":    "Address",  # legacy format kept for backfill
+    "土地區段位置建物區段門牌":   "Address",  # alternate legacy variant
     "交易年月日":               "DateMinguo",
     "移轉層次":               "Floor",
     "總樓層數":               "TotalFloors",
@@ -116,6 +129,7 @@ COL = {
     "建築完成年月":            "CompletionDateMinguo",
     # presale-specific
     "建案名稱":               "ProjectName",
+    "起造人":                 "BuilderName",
     "主建物面積":              "MainBuildingArea",
     "主建物佔比":              "MainBuildingRatioPct",
     # zoning — live in presale _b.csv
@@ -176,7 +190,7 @@ V2_MERGED_COLS = [
     "PricePerPing", "TotalPrice_10kTWD", "TotalPriceDisplay", "TotalFloorArea_Ping",
     "BuildingType", "BuildingAge", "Floor", "FloorCategory", "FloorLevel", "TotalFloors",
     "ParkingStatus", "ParkingPriceDisplay", "MainBuildingRatioPct",
-    "Remarks", "SpecialTradeTag", "DOM_Proxy", "DOM_Tag", "Status", "Developer",
+    "Remarks", "SpecialTradeTag", "remark_full", "is_special_transaction", "DOM_Proxy", "DOM_Tag", "Status", "Developer",
     "ProjectScale", "ZoningTag",
 ]
 
@@ -285,17 +299,41 @@ def categorize_floor(val) -> str:
 
 
 def extract_road(addr) -> str:
-    """Best-effort extraction of the road name from a Taiwanese address."""
+    """Extract road/street segment from a Taiwanese address.
+
+    Priority order:
+    1. Lookbehind after 區: capture through road/street/section/lane suffix
+       Uses (?<=區)(.*?(?:路|街|段|巷)) to handle post-district road names.
+       If 鄰 or 里 appears between 區 and the road token, we skip past them.
+    2. No 區 in address: match Chinese road name directly.
+    3. Ultimate fallback: return the full raw address so the field is never empty.
+    """
     if pd.isna(addr):
         return ""
-    s = str(addr)
-    # Match: Chinese characters + road/street keyword + optional section
+    s = str(addr).strip()
+    if not s:
+        return s
+
+    # 1. Lookbehind after 區 → capture through road/street/section/lane suffix
+    m = re.search(r"(?<=區)(.*?(?:路|街|段|巷))", s)
+    if m:
+        segment = m.group(1).strip()
+        if segment:  # only use regex result if non-empty; otherwise fall through to raw
+            # If 鄰/里 appears at the start, skip past them to get a cleaner road token
+            m2 = re.search(r"(?:鄰|里)(.*?(?:路|街|段|巷))", segment)
+            result = m2.group(1).strip() if m2 else segment
+            if result:
+                return result
+
+    # 2. No 區 present: match Chinese characters + road keyword + optional section
     m = re.search(r"[\u4e00-\u9fff\w]+(路|街|道|大道)([\u4e00-\u9fff\w段]*)", s)
     if m:
-        return m.group(0)
-    # Fallback: everything before the first house number
-    parts = re.split(r"\d+號", s)
-    return parts[0].strip() if parts else s[:20]
+        result = m.group(0).strip()
+        if result:
+            return result
+
+    # 3. Ultimate fallback: return the raw address so this field is NEVER empty
+    return s
 
 
 def _tag_status(row) -> str:
@@ -569,12 +607,9 @@ def _early_filter(df: pd.DataFrame) -> pd.DataFrame:
     if "TransactionType" in df.columns:
         df = df[df["TransactionType"].str.contains("房地", na=False)]
 
-    # Discard transactions flagged with remarks (family trades, special relationships)
-    if "Remarks" in df.columns:
-        df = df[
-            df["Remarks"].isna()
-            | (df["Remarks"].astype(str).str.strip() == "")
-        ]
+    # NOTE: Remarks-flagged rows (family trades, special relationships) are kept here.
+    # They are tagged via is_special_transaction in clean() and filtered later only
+    # when they deviate > 50 % from the district median price.
     return df
 
 
@@ -650,6 +685,11 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     if "DateMinguo" in df.columns:
         df["Quarter"] = df["DateMinguo"].apply(minguo_to_quarter)
         df["Date"] = df["DateMinguo"].apply(minguo_to_date)
+
+    # Discard records outside the rolling 3-year window from today
+    if "Date" in df.columns:
+        _cutoff = (datetime.now() - timedelta(days=3 * 365)).strftime("%Y/%m/%d")
+        df = df[df["Date"].fillna("").astype(str) >= _cutoff].copy()
 
     # Unit price TWD/sqm → 10k TWD/Ping
     if "UnitPricePerSqm" in df.columns:
@@ -733,13 +773,39 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         return "—"
     df["AddressFloor"] = df.apply(_addr_floor, axis=1)
 
-    # Special trade tag — any non-empty Remarks flags this as a special transaction
+    # Special trade tag — categorize based on 備註 keyword patterns
     if "Remarks" in df.columns:
-        df["SpecialTradeTag"] = df["Remarks"].fillna("").astype(str).str.strip().apply(
-            lambda r: "⚠️ 特殊交易" if r else ""
-        )
+        remarks_str = df["Remarks"].fillna("").astype(str).str.strip()
+        def _classify_remark(r: str) -> str:
+            if not r:
+                return ""
+            if any(kw in r for kw in ("親友", "員工", "關係")):
+                return "⚠️ [關係人]"
+            if any(kw in r for kw in ("增建", "頂蓋", "夾層")):
+                return "⚠️ [含增建]"
+            return "⚠️ 特殊交易"
+        df["SpecialTradeTag"] = remarks_str.apply(_classify_remark)
+        df["remark_full"] = remarks_str
+        df["is_special_transaction"] = remarks_str != ""
     else:
         df["SpecialTradeTag"] = ""
+        df["remark_full"] = ""
+        df["is_special_transaction"] = False
+
+    # Drop special-transaction rows that deviate > 50 % from the district median price.
+    # Rows without a valid PricePerPing or outside the 50 % threshold are removed;
+    # all others (including special transactions within normal range) are kept.
+    if "PricePerPing" in df.columns and "District" in df.columns:
+        pp = pd.to_numeric(df["PricePerPing"], errors="coerce")
+        district_median = pp.groupby(df["District"]).transform("median")
+        is_special = df["is_special_transaction"].astype(bool)
+        # For special transactions: drop if price deviates > 50 % from district median
+        deviation_ok = (
+            district_median.isna()
+            | (pp.isna())
+            | ((pp - district_median).abs() / district_median.clip(lower=1) <= 0.50)
+        )
+        df = df[~is_special | deviation_ok].copy()
 
     # Total floor area: prefer 建物移轉總面積平方公尺 (× 0.3025), else fall back to 總樓地板面積
     if "BuildingTransferAreaSqM" in df.columns:
@@ -801,6 +867,7 @@ def clean_presale(df: pd.DataFrame) -> pd.DataFrame:
 
     # Main building ratio %
     # Priority 1 (Real Data): compute (主建物面積 / 建物移轉總面積) × 100
+    # denom is replaced with NaN when zero to prevent division-by-zero producing inf.
     if "MainBuildingArea" in df.columns:
         main = pd.to_numeric(df["MainBuildingArea"], errors="coerce")
         if "BuildingTransferAreaSqM" in df.columns:
@@ -809,7 +876,8 @@ def clean_presale(df: pd.DataFrame) -> pd.DataFrame:
             denom = pd.to_numeric(df["TotalFloorArea"], errors="coerce")
         else:
             denom = pd.Series(float("nan"), index=df.index)
-        df["MainBuildingRatioPct"] = (main / denom * 100).round(1)
+        safe_denom = denom.replace(0, float("nan"))  # guard against zero-division
+        df["MainBuildingRatioPct"] = (main / safe_denom * 100).round(1)
     elif "MainBuildingRatioPct" in df.columns:
         # raw 主建物佔比 present — convert decimal ratio (≤1.0) to percentage
         raw_pct = pd.to_numeric(df["MainBuildingRatioPct"], errors="coerce")
@@ -855,18 +923,10 @@ def clean_presale(df: pd.DataFrame) -> pd.DataFrame:
             return "—"
         df["ParkingPriceDisplay"] = df.apply(_parking_display, axis=1)
 
-    # Developer detection from ProjectName keywords.
-    # Fallback: first 3 characters of ProjectName as a builder shorthand.
-    if "ProjectName" in df.columns:
-        def _developer(pname) -> str:
-            if pd.isna(pname) or not str(pname).strip():
-                return "—"
-            name = str(pname).strip()
-            for kw in DEVELOPER_KEYWORDS:
-                if kw in name:
-                    return kw
-            return name[:3] if name else "—"
-        df["Developer"] = df["ProjectName"].apply(_developer)
+    # Developer: derived from 起造人 (mapped to BuilderName in COL dict) if present in
+    # raw MOI data; otherwise falls back to project_info enrichment via merge_project_info().
+    if "BuilderName" in df.columns:
+        df["Developer"] = df["BuilderName"].apply(_developer_from_builder)
     else:
         df["Developer"] = "—"
 
@@ -879,10 +939,14 @@ COMPANY_KEYWORDS   = ["建設", "開發", "建築", "建造", "不動產", "企�
 
 
 def _developer_from_builder(builder: object) -> str:
-    """Convert 起造人 raw string → developer display name or '個體/合作開發'."""
+    """Convert 起造人 raw string → developer display name or '個體/合作開發'.
+
+    Always applies .strip() before any truncation to remove leading/trailing
+    whitespace or special symbols, capturing the core brand name cleanly.
+    """
     if pd.isna(builder) or not str(builder).strip():
         return "—"
-    name = str(builder).strip()
+    name = str(builder).strip()  # strip whitespace/symbols before truncation
     if any(m in name for m in INDIVIDUAL_MARKERS):
         return "個體/合作開發"
     has_company = any(k in name for k in COMPANY_KEYWORDS)
@@ -962,7 +1026,12 @@ def merge_project_info(presale_df: pd.DataFrame, proj_info: pd.DataFrame) -> pd.
 # ── V2 IQR purifier & DOM proxy ──────────────────────────────────────────────
 
 def iqr_filter_citywide(df: pd.DataFrame) -> pd.DataFrame:
-    """Hard-remove rows outside the city-wide 5th–95th percentile of PricePerPing."""
+    """Hard-remove rows outside the city-wide 5th–95th percentile of PricePerPing.
+
+    Retained for reference / presale fallback. Production pipeline uses
+    iqr_filter_per_district() so high-value districts are not truncated by
+    cheaper districts' data.
+    """
     if "PricePerPing" not in df.columns or df.empty:
         return df
     prices = pd.to_numeric(df["PricePerPing"], errors="coerce").dropna()
@@ -972,6 +1041,37 @@ def iqr_filter_citywide(df: pd.DataFrame) -> pd.DataFrame:
     hi = prices.quantile(IQR_HIGH)
     pp = pd.to_numeric(df["PricePerPing"], errors="coerce")
     return df[(pp >= lo) & (pp <= hi)].copy()
+
+
+def iqr_filter_per_district(df: pd.DataFrame) -> pd.DataFrame:
+    """Hard-remove rows outside the per-district 5th–95th percentile of PricePerPing.
+
+    Bounds (Q1/Q3) are computed independently for each District so that
+    high-value areas (e.g. Banqiao) are not truncated by cheaper districts.
+    Falls back to citywide bounds when the District column is absent.
+    """
+    if "PricePerPing" not in df.columns or df.empty:
+        return df
+    pp = pd.to_numeric(df["PricePerPing"], errors="coerce")
+    if "District" not in df.columns:
+        # fallback: citywide
+        prices = pp.dropna()
+        if prices.empty:
+            return df
+        lo = prices.quantile(IQR_LOW)
+        hi = prices.quantile(IQR_HIGH)
+        return df[(pp >= lo) & (pp <= hi)].copy()
+    mask = pd.Series(False, index=df.index)
+    for _district, grp in df.groupby("District"):
+        grp_pp = pp.loc[grp.index].dropna()
+        if grp_pp.empty:
+            mask.loc[grp.index] = True
+            continue
+        lo = grp_pp.quantile(IQR_LOW)
+        hi = grp_pp.quantile(IQR_HIGH)
+        in_band = (pp.loc[grp.index] >= lo) & (pp.loc[grp.index] <= hi)
+        mask.loc[grp.index] = in_band.fillna(False)
+    return df[mask].copy()
 
 
 def compute_dom_proxy(
@@ -1623,9 +1723,51 @@ def export_static_pages(city_name: str, city_dir: Path) -> None:
         except Exception as exc:  # noqa: BLE001
             log.warning("  Static rows export failed for %s/%s: %s", city_name, dist, exc)
 
+    # ── Per-district project explorer JSON (presale, one row per project) ─────
+    PROJECT_FIELDS = [
+        "ProjectName", "Road", "Developer", "ProjectScale", "ZoningTag",
+        "TotalFloors", "FloorLevel", "AddressFloor", "Address",
+        "PricePerPing", "TotalPrice_10kTWD", "MainBuildingRatioPct", "Date", "District",
+    ]
+    proj_written = 0
+    for d_info in dist_meta_list:
+        dist    = d_info.get("district", "")
+        parquet = city_dir / f"{_safe_name(str(dist))}{V3_SNAPSHOT_SUFFIX}"
+        if not parquet.exists():
+            continue
+        try:
+            df_all = pd.read_parquet(parquet)
+            if "Track" not in df_all.columns:
+                continue
+            ps_df = df_all[df_all["Track"].astype(str).str.lower() == "presale"].copy()
+            if ps_df.empty:
+                continue
+            if "Date" in ps_df.columns:
+                ps_df = ps_df.sort_values("Date", ascending=False, na_position="last")
+            if "ProjectName" in ps_df.columns:
+                ps_df = ps_df.drop_duplicates(subset=["ProjectName"], keep="first")
+            keep = [f for f in PROJECT_FIELDS if f in ps_df.columns]
+            ps_out = ps_df[keep].reset_index(drop=True)
+            records = [
+                {k: _jsonify(v) for k, v in row.items()}
+                for row in ps_out.to_dict(orient="records")
+            ]
+            (rows_dir / f"{dist}.projects.json").write_text(
+                json.dumps({
+                    "city":          city_name,
+                    "district":      dist,
+                    "records_total": len(records),
+                    "items":         records,
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            proj_written += 1
+        except Exception as exc:  # noqa: BLE001
+            log.warning("  Projects export failed for %s/%s: %s", city_name, dist, exc)
+
     log.info(
-        "  Wrote static API files for %s (%d districts, %d row files)",
-        city_name, len(dist_meta_list), written,
+        "  Wrote static API files for %s (%d districts, %d row files, %d project files)",
+        city_name, len(dist_meta_list), written, proj_written,
     )
 
 
@@ -1685,10 +1827,10 @@ def export_city(city_name: str, df: pd.DataFrame,
         "districts": [],
     }
 
-    # ── Step 1: IQR purifier (city-wide 5 %–95 % hard filter) ────────────────
-    df = iqr_filter_citywide(df)
+    # ── Step 1: IQR purifier (per-district 5 %–95 % hard filter) ───────────────
+    df = iqr_filter_per_district(df)
     if presale_df is not None and not presale_df.empty:
-        presale_df = iqr_filter_citywide(presale_df)
+        presale_df = iqr_filter_per_district(presale_df)
         proj_info = load_project_info(city_name)
         if proj_info is not None:
             presale_df = merge_project_info(presale_df, proj_info)
@@ -1832,6 +1974,96 @@ def export_manifest(city_districts: dict) -> None:
     )
     log.info("Wrote data/manifest.json")
 
+
+def export_sample_debug(city_dfs: dict, presale_dfs: dict) -> None:
+    """Write data/processed/sample_debug.json for deployment verification.
+
+    Contains representative rows so engineers can confirm that:
+      - address, floor, road (road_segment), community fallback, AddressFloor
+        are all correctly populated for actual transactions.
+      - project_name, developer, unit_count (ProjectScale), zoning (ZoningTag),
+        main_building_ratio (MainBuildingRatioPct), AddressFloor are correct
+        for presale transactions.
+
+    Deliberately small and deterministic: up to 10 rows per city per track.
+    Raises RuntimeError if no data is available (causes CI to fail-fast).
+    """
+    DEBUG_FIELDS_ACTUAL = [
+        "District", "Address", "AddressFloor", "Road", "Community",
+        "Floor", "Date", "PricePerPing",
+    ]
+    DEBUG_FIELDS_PRESALE = [
+        "District", "ProjectName", "Address", "AddressFloor", "Road",
+        "Developer", "ProjectScale", "ZoningTag", "MainBuildingRatioPct",
+        "FloorLevel", "TotalFloors", "Date",
+    ]
+
+    def _safe_val(v: Any) -> Any:
+        if isinstance(v, float) and math.isnan(v):
+            return None
+        if isinstance(v, pd.Timestamp):
+            return v.isoformat()
+        if hasattr(v, "item"):
+            try:
+                return v.item()
+            except Exception:
+                return str(v)
+        return v
+
+    def _pick_rows(df: pd.DataFrame, fields: list, n: int = 10) -> list[dict]:
+        available = [c for c in fields if c in df.columns]
+        sample = df[available].dropna(subset=["Address"] if "Address" in available else [])
+        sample = sample.head(n)
+        return [
+            {k: _safe_val(v) for k, v in row.items()}
+            for row in sample.to_dict(orient="records")
+        ]
+
+    actual_samples: list[dict] = []
+    presale_samples: list[dict] = []
+
+    for city_name, df in city_dfs.items():
+        if df is not None and not df.empty:
+            rows = _pick_rows(df, DEBUG_FIELDS_ACTUAL)
+            for r in rows:
+                r["_city"] = city_name
+                # Expose Road field explicitly as road_segment for readability
+                r["road_segment"] = r.pop("Road", None)
+            actual_samples.extend(rows)
+
+    for city_name, pdf in presale_dfs.items():
+        if pdf is not None and not pdf.empty:
+            rows = _pick_rows(pdf, DEBUG_FIELDS_PRESALE)
+            for r in rows:
+                r["_city"] = city_name
+                r["road_segment"] = r.pop("Road", None)
+                r["unit_count"] = r.pop("ProjectScale", None)
+                r["main_building_ratio"] = r.pop("MainBuildingRatioPct", None)
+            presale_samples.extend(rows)
+
+    if not actual_samples and not presale_samples:
+        raise RuntimeError(
+            "sample_debug.json generation failed: no rows collected from any city. "
+            "Aborting deployment to prevent corrupted data from reaching production."
+        )
+
+    payload = {
+        "generated": datetime.now(timezone.utc).isoformat(),
+        "description": (
+            "Verification snapshot — confirms address, road_segment, community, "
+            "developer, unit_count, zoning, and main_building_ratio are populated."
+        ),
+        "actual_samples":  actual_samples[:60],   # cap at 10 per city × 6 cities
+        "presale_samples": presale_samples[:60],
+    }
+    out_path = OUTPUT_DIR / "sample_debug.json"
+    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info(
+        "Wrote sample_debug.json (%d actual, %d presale sample rows)",
+        len(payload["actual_samples"]), len(payload["presale_samples"]),
+    )
+
+
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
 def run(local_dir: Optional[Path] = None,
@@ -1845,6 +2077,9 @@ def run(local_dir: Optional[Path] = None,
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     city_districts: dict = {}
+    # Collect cleaned DFs for sample_debug.json generation at the end
+    _debug_actual:  dict[str, Optional[pd.DataFrame]] = {}
+    _debug_presale: dict[str, Optional[pd.DataFrame]] = {}
 
     active_map = {
         k: v for k, v in CITY_MAP.items()
@@ -1894,8 +2129,11 @@ def run(local_dir: Optional[Path] = None,
 
         districts = export_city(city_name, df, presale_df=presale_df)
         city_districts[city_name] = districts
+        _debug_actual[city_name]  = df
+        _debug_presale[city_name] = presale_df
 
     export_manifest(city_districts)
+    export_sample_debug(_debug_actual, _debug_presale)  # fail-fast guard before deploy
 
     # Write last_updated.json for dashboard footer
     now_utc = datetime.now(timezone.utc)
@@ -1960,7 +2198,7 @@ def run_backfill(seasons: Optional[list] = None) -> None:
 
     Tip: run via GitHub Actions for fast download speeds.
     """
-    seasons = seasons or BACKFILL_SEASONS
+    seasons = seasons or _default_backfill_seasons()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     city_frames: dict = {CITY_MAP[c][0]: [] for c in CITY_MAP}

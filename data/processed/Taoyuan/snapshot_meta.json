@@ -1,15 +1,15 @@
 {
   "city": "Taoyuan",
-  "generated": "2026-04-28T08:39:04.260565+00:00",
+  "generated": "2026-05-01T06:29:48.746121+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [
     {
       "district": "中壢區",
       "file": "中壢區_v3.parquet",
-      "rows": 68,
-      "date_min": "2025-08-24",
-      "date_max": "2026-03-14",
+      "rows": 90,
+      "date_min": "2023-06-16",
+      "date_max": "2026-03-31",
       "tracks": [
         "Actual",
         "Presale"
@@ -18,9 +18,9 @@
     {
       "district": "八德區",
       "file": "八德區_v3.parquet",
-      "rows": 24,
-      "date_min": "2025-12-09",
-      "date_max": "2026-03-15",
+      "rows": 77,
+      "date_min": "2023-06-06",
+      "date_max": "2026-03-30",
       "tracks": [
         "Actual",
         "Presale"
@@ -29,9 +29,9 @@
     {
       "district": "大園區",
       "file": "大園區_v3.parquet",
-      "rows": 20,
-      "date_min": "2025-12-07",
-      "date_max": "2026-03-19",
+      "rows": 61,
+      "date_min": "2023-06-25",
+      "date_max": "2026-03-30",
       "tracks": [
         "Actual",
         "Presale"
@@ -40,9 +40,9 @@
     {
       "district": "大溪區",
       "file": "大溪區_v3.parquet",
-      "rows": 12,
-      "date_min": "2026-01-31",
-      "date_max": "2026-03-09",
+      "rows": 14,
+      "date_min": "2025-11-27",
+      "date_max": "2026-03-23",
       "tracks": [
         "Actual",
         "Presale"
@@ -51,9 +51,9 @@
     {
       "district": "平鎮區",
       "file": "平鎮區_v3.parquet",
-      "rows": 29,
-      "date_min": "2024-04-20",
-      "date_max": "2026-03-23",
+      "rows": 75,
+      "date_min": "2024-06-10",
+      "date_max": "2026-03-25",
       "tracks": [
         "Actual",
         "Presale"
@@ -62,9 +62,9 @@
     {
       "district": "新屋區",
       "file": "新屋區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-03-10",
-      "date_max": "2026-03-10",
+      "rows": 3,
+      "date_min": "2025-01-18",
+      "date_max": "2026-02-22",
       "tracks": [
         "Actual"
       ]
@@ -72,9 +72,9 @@
     {
       "district": "桃園區",
       "file": "桃園區_v3.parquet",
-      "rows": 79,
-      "date_min": "2025-10-19",
-      "date_max": "2026-03-22",
+      "rows": 107,
+      "date_min": "2023-05-20",
+      "date_max": "2026-03-31",
       "tracks": [
         "Actual",
         "Presale"
@@ -83,9 +83,9 @@
     {
       "district": "楊梅區",
       "file": "楊梅區_v3.parquet",
-      "rows": 29,
-      "date_min": "2026-01-17",
-      "date_max": "2026-03-13",
+      "rows": 110,
+      "date_min": "2023-05-10",
+      "date_max": "2026-03-30",
       "tracks": [
         "Actual",
         "Presale"
@@ -95,8 +95,8 @@
       "district": "蘆竹區",
       "file": "蘆竹區_v3.parquet",
       "rows": 40,
-      "date_min": "2026-01-12",
-      "date_max": "2026-03-10",
+      "date_min": "2025-10-11",
+      "date_max": "2026-03-23",
       "tracks": [
         "Actual",
         "Presale"
@@ -105,9 +105,9 @@
     {
       "district": "觀音區",
       "file": "觀音區_v3.parquet",
-      "rows": 23,
-      "date_min": "2025-11-04",
-      "date_max": "2026-03-15",
+      "rows": 36,
+      "date_min": "2023-10-30",
+      "date_max": "2026-03-24",
       "tracks": [
         "Actual",
         "Presale"
@@ -116,9 +116,9 @@
     {
       "district": "龍潭區",
       "file": "龍潭區_v3.parquet",
-      "rows": 18,
-      "date_min": "2025-11-05",
-      "date_max": "2026-03-27",
+      "rows": 26,
+      "date_min": "2025-12-20",
+      "date_max": "2026-03-30",
       "tracks": [
         "Actual",
         "Presale"
@@ -127,9 +127,9 @@
     {
       "district": "龜山區",
       "file": "龜山區_v3.parquet",
-      "rows": 39,
-      "date_min": "2025-10-24",
-      "date_max": "2026-03-12",
+      "rows": 67,
+      "date_min": "2023-06-01",
+      "date_max": "2026-03-20",
       "tracks": [
         "Actual",
         "Presale"

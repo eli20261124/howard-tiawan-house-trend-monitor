@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Taipei RE AI Terminal v3</title>
+  <title>RE AI Terminal · v3.2</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -253,7 +253,7 @@
   <div id="main">
 
     <header id="topbar">
-      <div id="topbar-title">🏙 <span>Taipei RE AI Terminal</span> v3</div>
+      <div id="topbar-title">🏙 <span>RE AI Terminal</span> · v3.2</div>
       <div id="topbar-meta">
         <strong id="city-label">—</strong>&nbsp;·&nbsp;<span id="district-label">全市</span>
       </div>
@@ -317,6 +317,7 @@
         <div class="tab-bar">
           <button class="tab-btn active" data-track="actual">🏠 Existing 成屋</button>
           <button class="tab-btn"        data-track="presale">📋 Pre-sale 預售屋</button>
+          <button class="tab-btn"        data-track="projects">🏢 Projects 建案總覽</button>
         </div>
 
         <!-- Existing pane -->
@@ -354,6 +355,24 @@
             </div>
           </div>
         </div>
+
+        <!-- Pre-sale Projects pane -->
+        <div class="tab-pane" id="pane-projects">
+          <div id="exp-projects"><div class="no-data">選擇行政區以查看建案總覽。</div></div>
+          <div class="pag-bar" id="pagbar-projects" style="display:none">
+            <div class="pag-info">顯示 <strong id="pj-showing">—</strong>，共 <strong id="pj-total">—</strong> 個建案</div>
+            <div class="pag-ctrl">
+              <select class="pag-sz" id="psz-projects">
+                <option value="5">5 / 頁</option>
+                <option value="10">10 / 頁</option>
+                <option value="20" selected>20 / 頁</option>
+              </select>
+              <button class="pag-btn" id="pj-prev">← 上頁</button>
+              <span id="pj-pages" style="display:flex;gap:.25rem;"></span>
+              <button class="pag-btn" id="pj-next">下頁 →</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="page-footer">
@@ -375,8 +394,8 @@ const S = {
   city: null, district: null,
   lbSortCol: 'ResilienceScore', lbSortDir: 'desc',
   lbRows: [],
-  pageA: 1, pageP: 1,
-  pszA: 20, pszP: 20,
+  pageA: 1, pageP: 1, pageProj: 1,
+  pszA: 20, pszP: 20, pszProj: 20,
   track: 'actual',
 };
 
@@ -473,6 +492,21 @@ async function _staticApi(path) {
     const all = await r.json();
     let items = all.items || [];
     if (track) items = items.filter(x => (x.Track || '').toLowerCase() === track.toLowerCase());
+    const total = items.length;
+    return { ...all, records_total: total, items: items.slice((page - 1) * psz, page * psz) };
+  }
+
+  // /api/{city}/districts/{district}/projects  (pre-sale project explorer)
+  const mDP = url.match(/^\/api\/([^/]+)\/districts\/([^/]+)\/projects/);
+  if (mDP) {
+    const city     = mDP[1];
+    const district = decodeURIComponent(mDP[2]);
+    const page     = parseInt(qp.get('page')      || '1');
+    const psz      = parseInt(qp.get('page_size') || '20');
+    const r = await fetch(`./data/processed/${city}/rows/${district}.projects.json`);
+    if (!r.ok) throw new Error(r.status);
+    const all = await r.json();
+    const items = all.items || [];
     const total = items.length;
     return { ...all, records_total: total, items: items.slice((page - 1) * psz, page * psz) };
   }
@@ -701,30 +735,39 @@ function distSelect(dist) {
 
 /* ── Explorer ────────────────────────────────────────────────────── */
 function resetExplorer() {
-  $('exp-actual').innerHTML  = '<div class="no-data">從上方選擇行政區。</div>';
-  $('exp-presale').innerHTML = '<div class="no-data">從上方選擇行政區。</div>';
-  $('pagbar-actual').style.display = $('pagbar-presale').style.display = 'none';
+  $('exp-actual').innerHTML   = '<div class="no-data">從上方選擇行政區。</div>';
+  $('exp-presale').innerHTML  = '<div class="no-data">從上方選擇行政區。</div>';
+  $('exp-projects').innerHTML = '<div class="no-data">從上方選擇行政區。</div>';
+  $('pagbar-actual').style.display   = 'none';
+  $('pagbar-presale').style.display  = 'none';
+  $('pagbar-projects').style.display = 'none';
 }
 
 function loadExplorer() {
   if (!S.city || !S.district) return;
   loadTrack('actual');
   loadTrack('presale');
+  loadTrack('projects');
 }
 
 async function loadTrack(track) {
-  const isA   = track === 'actual';
-  const page  = isA ? S.pageA  : S.pageP;
-  const psz   = isA ? S.pszA   : S.pszP;
-  const wrap  = isA ? 'exp-actual'  : 'exp-presale';
-  const pbar  = isA ? 'pagbar-actual' : 'pagbar-presale';
+  const isA    = track === 'actual';
+  const isProj = track === 'projects';
+  const page   = isA ? S.pageA : isProj ? S.pageProj : S.pageP;
+  const psz    = isA ? S.pszA  : isProj ? S.pszProj  : S.pszP;
+  const wrap   = isA ? 'exp-actual' : isProj ? 'exp-projects' : 'exp-presale';
+  const pbar   = isA ? 'pagbar-actual' : isProj ? 'pagbar-projects' : 'pagbar-presale';
 
   $(wrap).innerHTML = '<div class="spinner"><div class="spinner-ring"></div><br>Loading…</div>';
 
   try {
     const safe = encodeURIComponent(S.district);
-    const data = await api(`/api/${S.city}/districts/${safe}/rows?track=${track}&page=${page}&page_size=${psz}&sort_by=Date&sort_dir=desc`);
-
+    let data;
+    if (isProj) {
+      data = await api(`/api/${S.city}/districts/${safe}/projects?page=${page}&page_size=${psz}&sort_by=Date&sort_dir=desc`);
+    } else {
+      data = await api(`/api/${S.city}/districts/${safe}/rows?track=${track}&page=${page}&page_size=${psz}&sort_by=Date&sort_dir=desc`);
+    }
     if (isA && data.date_min && data.date_max) {
       $('bc-range').textContent = `${data.date_min} ~ ${data.date_max}`;
     }
@@ -762,6 +805,18 @@ const COLS_PRESALE = [
   { k: 'ParkingPriceDisplay',l: '車位' },
   { k: 'MainBuildingRatioPct',l: '主建比%' },
 ];
+// Pre-sale Project Explorer columns — project-level, one row per 建案
+const COLS_PRESALE_PROJECTS = [
+  { k: 'ProjectName',         l: '建案名稱' },
+  { k: 'Road',                l: '路段' },
+  { k: 'Developer',           l: '建商' },
+  { k: 'ProjectScale',        l: '戶數' },
+  { k: 'ZoningTag',           l: '分區' },
+  { k: 'TotalFloors',         l: '總樓層' },
+  { k: 'PricePerPing',        l: '單價(萬/坪)' },
+  { k: 'MainBuildingRatioPct',l: '主建比%' },
+  { k: 'Date',                l: '最新登錄日' },
+];
 
 function renderExpTable(wrapId, pbarId, data, track) {
   const items = data.items || [];
@@ -769,7 +824,8 @@ function renderExpTable(wrapId, pbarId, data, track) {
   const page  = data.page || 1;
   const psz   = data.page_size || 20;
   const isA   = track === 'actual';
-  const cols  = isA ? COLS_ACTUAL : COLS_PRESALE;
+  const isProj = track === 'projects';
+  const cols  = isA ? COLS_ACTUAL : isProj ? COLS_PRESALE_PROJECTS : COLS_PRESALE;
 
   if (!items.length) {
     $(wrapId).innerHTML = '<div class="no-data">此篩選條件無交易資料。</div>';
@@ -803,7 +859,11 @@ function renderExpTable(wrapId, pbarId, data, track) {
         if (/Mass Flip|🔥/.test(txt)) td.className = 'cluster-tag';
         td.textContent = txt;
       } else if (c.k === 'SpecialTradeTag') {
-        if (txt && txt !== '—') td.className = 'special-trade';
+        if (txt && txt !== '—') {
+          td.className = 'special-trade';
+          const rf = row['remark_full'];
+          if (rf && rf !== '—' && rf !== '') td.title = String(rf);
+        }
         td.textContent = txt === '—' ? '' : txt;
       } else if (c.k === 'Remarks') {
         const rc = remarkCls(txt);
@@ -841,6 +901,14 @@ function renderExpTable(wrapId, pbarId, data, track) {
     $('pa-next').disabled = page >= totalPg;
     $('pa-prev').onclick = () => { if (S.pageA > 1) { S.pageA--; loadTrack('actual'); } };
     $('pa-next').onclick = () => { if (S.pageA < totalPg) { S.pageA++; loadTrack('actual'); } };
+  } else if (isProj) {
+    $('pj-showing').textContent = `${startR}–${endR}`;
+    $('pj-total').textContent   = total;
+    buildPagBtns('pj-pages', page, totalPg, p => { S.pageProj = p; loadTrack('projects'); });
+    $('pj-prev').disabled = page <= 1;
+    $('pj-next').disabled = page >= totalPg;
+    $('pj-prev').onclick = () => { if (S.pageProj > 1) { S.pageProj--; loadTrack('projects'); } };
+    $('pj-next').onclick = () => { if (S.pageProj < totalPg) { S.pageProj++; loadTrack('projects'); } };
   } else {
     $('pp-showing').textContent = `${startR}–${endR}`;
     $('pp-total').textContent   = total;
@@ -887,6 +955,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 /* ── Page-size ───────────────────────────────────────────────────── */
 $('psz-actual').addEventListener('change', e => { S.pszA = +e.target.value; S.pageA = 1; loadTrack('actual'); });
 $('psz-presale').addEventListener('change', e => { S.pszP = +e.target.value; S.pageP = 1; loadTrack('presale'); });
+$('psz-projects').addEventListener('change', e => { S.pszProj = +e.target.value; S.pageProj = 1; loadTrack('projects'); });
 </script>
 </body>
 </html>

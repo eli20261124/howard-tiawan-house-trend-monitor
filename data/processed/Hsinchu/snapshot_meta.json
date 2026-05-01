@@ -1,0 +1,19 @@
+{
+  "city": "Hsinchu",
+  "generated": "2026-05-01T06:29:52.871882+00:00",
+  "snapshot_format": "parquet",
+  "snapshot_suffix": "_v3.parquet",
+  "districts": [
+    {
+      "district": "新竹市",
+      "file": "新竹市_v3.parquet",
+      "rows": 72,
+      "date_min": "2023-05-10",
+      "date_max": "2026-03-28",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    }
+  ]
+}

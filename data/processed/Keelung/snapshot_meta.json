@@ -1,0 +1,79 @@
+{
+  "city": "Keelung",
+  "generated": "2026-05-01T06:29:53.306991+00:00",
+  "snapshot_format": "parquet",
+  "snapshot_suffix": "_v3.parquet",
+  "districts": [
+    {
+      "district": "七堵區",
+      "file": "七堵區_v3.parquet",
+      "rows": 21,
+      "date_min": "2024-05-11",
+      "date_max": "2026-03-20",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "中山區",
+      "file": "中山區_v3.parquet",
+      "rows": 3,
+      "date_min": "2026-01-10",
+      "date_max": "2026-02-24",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "中正區",
+      "file": "中正區_v3.parquet",
+      "rows": 2,
+      "date_min": "2026-03-08",
+      "date_max": "2026-03-08",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "仁愛區",
+      "file": "仁愛區_v3.parquet",
+      "rows": 8,
+      "date_min": "2026-02-26",
+      "date_max": "2026-03-22",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "信義區",
+      "file": "信義區_v3.parquet",
+      "rows": 8,
+      "date_min": "2026-01-25",
+      "date_max": "2026-04-02",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "安樂區",
+      "file": "安樂區_v3.parquet",
+      "rows": 18,
+      "date_min": "2024-03-10",
+      "date_max": "2026-03-28",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "暖暖區",
+      "file": "暖暖區_v3.parquet",
+      "rows": 2,
+      "date_min": "2026-01-26",
+      "date_max": "2026-03-15",
+      "tracks": [
+        "Actual"
+      ]
+    }
+  ]
+}

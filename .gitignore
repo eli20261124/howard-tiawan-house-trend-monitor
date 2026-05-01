@@ -17,6 +17,7 @@ __pycache__/
 id_rsa*
 
 # Generated data artifacts  (raw MOI CSVs, Parquet snapshots, legacy outputs)
+data/raw/
 data/**/*.csv
 data/**/*.parquet
 data/Kaohsiung/
