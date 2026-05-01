@@ -108,7 +108,7 @@ FairValue = \beta_{1}(\text{Location}) + \beta_{2}(\text{Age}) + \beta_{3}(\text
 
 ### 📊 Data Scope & Performance
 *   **City Expansion (城市擴張)**：正式將資料管線延伸至 **新竹市 (Hsinchu)** 與 **基隆市 (Keelung)**，支援更廣泛的北台灣房地產市場分析。
-*   **3-Year Rolling Window (三年動態視窗)**：為確保在 M1 晶片等本地終端機能保持高效運算，資料庫深度全面優化為「近三年 (Last 3 Years)」的滾動式數據。確保趨勢指標 (Trend Indicators) 更貼近當前市場脈動。
+*   **3-Year Rolling Window (三年動態視窗)**：為確保高效運算，資料庫深度全面優化為「近三年 (Last 3 Years)」的滾動式數據。確保趨勢指標 (Trend Indicators) 更貼近當前市場脈動。
 
 ### 🧹 Data Sanitization & UI
 *   **Smart Special Transactions (智慧特殊交易標籤)**：重構了特殊交易的判定邏輯。系統不再只顯示單一警告，而是主動解析備註欄位，自動打上 `[關係人]` (如親友交易) 或 `[含增建]` 等精準標籤。
