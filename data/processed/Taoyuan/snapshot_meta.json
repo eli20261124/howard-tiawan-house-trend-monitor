@@ -1,6 +1,6 @@
 {
   "city": "Taoyuan",
-  "generated": "2026-05-01T06:29:48.746121+00:00",
+  "generated": "2026-05-02T05:15:12.035450+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-01T06:29:53.522554+00:00",
+  "generated": "2026-05-02T05:15:26.940283+00:00",
   "description": "Verification snapshot — confirms address, road_segment, community, developer, unit_count, zoning, and main_building_ratio are populated.",
   "actual_samples": [
     {

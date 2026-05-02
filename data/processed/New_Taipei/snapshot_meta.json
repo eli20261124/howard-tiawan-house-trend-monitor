@@ -1,6 +1,6 @@
 {
   "city": "New_Taipei",
-  "generated": "2026-05-01T06:29:47.167870+00:00",
+  "generated": "2026-05-02T05:15:08.278423+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [
@@ -159,8 +159,8 @@
     {
       "district": "泰山區",
       "file": "泰山區_v3.parquet",
-      "rows": 17,
-      "date_min": "2023-05-02",
+      "rows": 16,
+      "date_min": "2023-06-30",
       "date_max": "2026-03-20",
       "tracks": [
         "Actual",

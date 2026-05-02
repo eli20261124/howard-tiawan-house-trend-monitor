@@ -1,6 +1,6 @@
 {
   "city": "Kaohsiung",
-  "generated": "2026-05-01T06:29:51.688752+00:00",
+  "generated": "2026-05-02T05:15:22.413703+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [

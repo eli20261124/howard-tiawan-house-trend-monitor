@@ -1,6 +1,6 @@
 {
   "city": "Taichung",
-  "generated": "2026-05-01T06:29:49.706350+00:00",
+  "generated": "2026-05-02T05:15:14.594975+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [

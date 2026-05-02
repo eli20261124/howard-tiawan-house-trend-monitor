@@ -1,6 +1,6 @@
 {
   "city": "Taipei",
-  "generated": "2026-05-01T06:29:46.105254+00:00",
+  "generated": "2026-05-02T05:15:04.559046+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [
