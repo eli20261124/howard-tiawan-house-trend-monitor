@@ -433,6 +433,8 @@ MONTHLY_RENT_PER_PING: dict = {
     "Taichung":    750,
     "Tainan":      600,
     "Kaohsiung":   650,
+    "Hsinchu":     800,   # 新竹市 — tech hub, higher rent pressure
+    "Keelung":     650,   # 基隆市 — port city, similar to Kaohsiung
 }
 
 
