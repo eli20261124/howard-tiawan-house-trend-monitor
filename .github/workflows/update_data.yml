@@ -18,18 +18,18 @@ jobs:
     steps:
       # ── 1. Fetch ──────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
           persist-credentials: true
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.11"
 
       - name: Cache pip dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v4.2.3
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
