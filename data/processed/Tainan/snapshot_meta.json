@@ -1,15 +1,15 @@
 {
   "city": "Tainan",
-  "generated": "2026-05-02T05:15:19.351455+00:00",
+  "generated": "2026-05-11T09:08:59.760745+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [
     {
       "district": "七股區",
       "file": "七股區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-02-14",
-      "date_max": "2026-02-14",
+      "rows": 7,
+      "date_min": "2024-05-07",
+      "date_max": "2026-04-16",
       "tracks": [
         "Actual"
       ]
@@ -17,19 +17,20 @@
     {
       "district": "下營區",
       "file": "下營區_v3.parquet",
-      "rows": 2,
-      "date_min": "2024-08-04",
-      "date_max": "2025-03-09",
+      "rows": 3,
+      "date_min": "2025-09-20",
+      "date_max": "2026-03-28",
       "tracks": [
-        "Actual"
+        "Actual",
+        "Presale"
       ]
     },
     {
       "district": "中西區",
       "file": "中西區_v3.parquet",
-      "rows": 17,
-      "date_min": "2025-09-14",
-      "date_max": "2026-04-01",
+      "rows": 18,
+      "date_min": "2026-01-31",
+      "date_max": "2026-04-16",
       "tracks": [
         "Actual"
       ]
@@ -37,9 +38,9 @@
     {
       "district": "仁德區",
       "file": "仁德區_v3.parquet",
-      "rows": 40,
-      "date_min": "2023-07-07",
-      "date_max": "2026-03-22",
+      "rows": 42,
+      "date_min": "2023-06-02",
+      "date_max": "2026-04-08",
       "tracks": [
         "Actual",
         "Presale"
@@ -48,31 +49,40 @@
     {
       "district": "佳里區",
       "file": "佳里區_v3.parquet",
-      "rows": 3,
-      "date_min": "2026-03-15",
-      "date_max": "2026-03-22",
+      "rows": 6,
+      "date_min": "2025-01-12",
+      "date_max": "2026-04-17",
       "tracks": [
-        "Actual",
-        "Presale"
+        "Actual"
       ]
     },
     {
       "district": "北區",
       "file": "北區_v3.parquet",
-      "rows": 26,
-      "date_min": "2023-05-08",
-      "date_max": "2026-04-13",
+      "rows": 19,
+      "date_min": "2023-05-27",
+      "date_max": "2026-04-09",
       "tracks": [
         "Actual",
         "Presale"
       ]
     },
     {
+      "district": "北門區",
+      "file": "北門區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-03-31",
+      "date_max": "2026-03-31",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
       "district": "南區",
       "file": "南區_v3.parquet",
-      "rows": 11,
-      "date_min": "2026-01-26",
-      "date_max": "2026-04-01",
+      "rows": 17,
+      "date_min": "2026-01-21",
+      "date_max": "2026-04-15",
       "tracks": [
         "Actual",
         "Presale"
@@ -81,20 +91,40 @@
     {
       "district": "善化區",
       "file": "善化區_v3.parquet",
-      "rows": 10,
-      "date_min": "2025-12-15",
-      "date_max": "2026-03-24",
+      "rows": 24,
+      "date_min": "2023-06-27",
+      "date_max": "2026-04-17",
       "tracks": [
         "Actual",
         "Presale"
       ]
     },
     {
+      "district": "大內區",
+      "file": "大內區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-04-06",
+      "date_max": "2026-04-06",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "學甲區",
+      "file": "學甲區_v3.parquet",
+      "rows": 1,
+      "date_min": "2024-03-11",
+      "date_max": "2024-03-11",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
       "district": "安南區",
       "file": "安南區_v3.parquet",
-      "rows": 43,
-      "date_min": "2023-06-28",
-      "date_max": "2026-04-03",
+      "rows": 54,
+      "date_min": "2023-07-09",
+      "date_max": "2026-04-14",
       "tracks": [
         "Actual",
         "Presale"
@@ -103,70 +133,30 @@
     {
       "district": "安定區",
       "file": "安定區_v3.parquet",
-      "rows": 9,
-      "date_min": "2023-06-29",
-      "date_max": "2026-03-12",
+      "rows": 7,
+      "date_min": "2023-10-21",
+      "date_max": "2026-02-09",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "安平區",
+      "file": "安平區_v3.parquet",
+      "rows": 24,
+      "date_min": "2025-12-19",
+      "date_max": "2026-04-17",
       "tracks": [
         "Actual",
         "Presale"
       ]
     },
     {
-      "district": "安平區",
-      "file": "安平區_v3.parquet",
-      "rows": 12,
-      "date_min": "2025-05-27",
-      "date_max": "2026-03-22",
-      "tracks": [
-        "Actual"
-      ]
-    },
-    {
-      "district": "官田區",
-      "file": "官田區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-02-03",
-      "date_max": "2026-02-03",
-      "tracks": [
-        "Actual"
-      ]
-    },
-    {
-      "district": "將軍區",
-      "file": "將軍區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-03-01",
-      "date_max": "2026-03-01",
-      "tracks": [
-        "Actual"
-      ]
-    },
-    {
-      "district": "後壁區",
-      "file": "後壁區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-01-06",
-      "date_max": "2026-01-06",
-      "tracks": [
-        "Actual"
-      ]
-    },
-    {
-      "district": "新化區",
-      "file": "新化區_v3.parquet",
-      "rows": 3,
-      "date_min": "2025-10-01",
-      "date_max": "2026-03-20",
-      "tracks": [
-        "Actual"
-      ]
-    },
-    {
       "district": "新市區",
       "file": "新市區_v3.parquet",
-      "rows": 4,
-      "date_min": "2024-06-23",
-      "date_max": "2024-06-29",
+      "rows": 29,
+      "date_min": "2023-05-13",
+      "date_max": "2026-04-17",
       "tracks": [
         "Actual"
       ]
@@ -174,9 +164,9 @@
     {
       "district": "新營區",
       "file": "新營區_v3.parquet",
-      "rows": 24,
-      "date_min": "2023-07-15",
-      "date_max": "2026-04-08",
+      "rows": 12,
+      "date_min": "2023-06-18",
+      "date_max": "2026-03-30",
       "tracks": [
         "Actual",
         "Presale"
@@ -185,20 +175,30 @@
     {
       "district": "東區",
       "file": "東區_v3.parquet",
-      "rows": 28,
-      "date_min": "2025-11-07",
-      "date_max": "2026-03-25",
+      "rows": 48,
+      "date_min": "2025-12-03",
+      "date_max": "2026-04-18",
       "tracks": [
         "Actual",
         "Presale"
       ]
     },
     {
-      "district": "東山區",
-      "file": "東山區_v3.parquet",
+      "district": "柳營區",
+      "file": "柳營區_v3.parquet",
+      "rows": 2,
+      "date_min": "2025-06-21",
+      "date_max": "2026-04-15",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "楠西區",
+      "file": "楠西區_v3.parquet",
       "rows": 1,
-      "date_min": "2026-02-09",
-      "date_max": "2026-02-09",
+      "date_min": "2025-12-20",
+      "date_max": "2025-12-20",
       "tracks": [
         "Actual"
       ]
@@ -206,9 +206,9 @@
     {
       "district": "歸仁區",
       "file": "歸仁區_v3.parquet",
-      "rows": 27,
-      "date_min": "2024-03-10",
-      "date_max": "2026-03-18",
+      "rows": 35,
+      "date_min": "2023-11-05",
+      "date_max": "2026-04-16",
       "tracks": [
         "Actual",
         "Presale"
@@ -217,9 +217,9 @@
     {
       "district": "永康區",
       "file": "永康區_v3.parquet",
-      "rows": 63,
-      "date_min": "2023-05-26",
-      "date_max": "2026-04-02",
+      "rows": 84,
+      "date_min": "2023-09-24",
+      "date_max": "2026-04-15",
       "tracks": [
         "Actual",
         "Presale"
@@ -229,18 +229,28 @@
       "district": "玉井區",
       "file": "玉井區_v3.parquet",
       "rows": 1,
-      "date_min": "2026-03-19",
-      "date_max": "2026-03-19",
+      "date_min": "2026-03-03",
+      "date_max": "2026-03-03",
       "tracks": [
         "Actual"
       ]
     },
     {
-      "district": "關廟區",
-      "file": "關廟區_v3.parquet",
+      "district": "西港區",
+      "file": "西港區_v3.parquet",
       "rows": 2,
-      "date_min": "2026-01-13",
-      "date_max": "2026-03-21",
+      "date_min": "2026-02-08",
+      "date_max": "2026-03-20",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "鹽水區",
+      "file": "鹽水區_v3.parquet",
+      "rows": 3,
+      "date_min": "2026-01-24",
+      "date_max": "2026-03-29",
       "tracks": [
         "Actual"
       ]
@@ -248,9 +258,9 @@
     {
       "district": "麻豆區",
       "file": "麻豆區_v3.parquet",
-      "rows": 7,
-      "date_min": "2026-01-30",
-      "date_max": "2026-04-02",
+      "rows": 9,
+      "date_min": "2024-11-21",
+      "date_max": "2026-04-13",
       "tracks": [
         "Actual",
         "Presale"

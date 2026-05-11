@@ -1,15 +1,26 @@
 {
   "city": "New_Taipei",
-  "generated": "2026-05-02T05:15:08.278423+00:00",
+  "generated": "2026-05-11T09:08:49.885858+00:00",
   "snapshot_format": "parquet",
   "snapshot_suffix": "_v3.parquet",
   "districts": [
     {
       "district": "三峽區",
       "file": "三峽區_v3.parquet",
-      "rows": 12,
-      "date_min": "2024-12-26",
-      "date_max": "2026-03-24",
+      "rows": 7,
+      "date_min": "2026-01-13",
+      "date_max": "2026-03-30",
+      "tracks": [
+        "Actual",
+        "Presale"
+      ]
+    },
+    {
+      "district": "三芝區",
+      "file": "三芝區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-04-10",
+      "date_max": "2026-04-10",
       "tracks": [
         "Actual"
       ]
@@ -17,9 +28,9 @@
     {
       "district": "三重區",
       "file": "三重區_v3.parquet",
-      "rows": 79,
-      "date_min": "2023-12-21",
-      "date_max": "2026-03-29",
+      "rows": 112,
+      "date_min": "2023-08-15",
+      "date_max": "2026-04-04",
       "tracks": [
         "Actual",
         "Presale"
@@ -28,9 +39,9 @@
     {
       "district": "中和區",
       "file": "中和區_v3.parquet",
-      "rows": 63,
-      "date_min": "2025-12-12",
-      "date_max": "2026-03-30",
+      "rows": 89,
+      "date_min": "2025-11-04",
+      "date_max": "2026-04-08",
       "tracks": [
         "Actual",
         "Presale"
@@ -39,9 +50,9 @@
     {
       "district": "五股區",
       "file": "五股區_v3.parquet",
-      "rows": 21,
-      "date_min": "2025-12-26",
-      "date_max": "2026-03-23",
+      "rows": 36,
+      "date_min": "2023-12-12",
+      "date_max": "2026-03-30",
       "tracks": [
         "Actual",
         "Presale"
@@ -50,9 +61,9 @@
     {
       "district": "八里區",
       "file": "八里區_v3.parquet",
-      "rows": 2,
-      "date_min": "2026-03-20",
-      "date_max": "2026-03-30",
+      "rows": 6,
+      "date_min": "2025-11-06",
+      "date_max": "2026-03-28",
       "tracks": [
         "Actual",
         "Presale"
@@ -61,30 +72,20 @@
     {
       "district": "土城區",
       "file": "土城區_v3.parquet",
-      "rows": 59,
-      "date_min": "2023-11-12",
-      "date_max": "2026-03-29",
+      "rows": 48,
+      "date_min": "2023-11-04",
+      "date_max": "2026-04-17",
       "tracks": [
         "Actual",
         "Presale"
       ]
     },
     {
-      "district": "坪林區",
-      "file": "坪林區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-03-30",
-      "date_max": "2026-03-30",
-      "tracks": [
-        "Actual"
-      ]
-    },
-    {
       "district": "新店區",
       "file": "新店區_v3.parquet",
-      "rows": 59,
-      "date_min": "2023-06-30",
-      "date_max": "2026-03-18",
+      "rows": 65,
+      "date_min": "2023-10-06",
+      "date_max": "2026-04-13",
       "tracks": [
         "Actual",
         "Presale"
@@ -93,9 +94,9 @@
     {
       "district": "新莊區",
       "file": "新莊區_v3.parquet",
-      "rows": 77,
+      "rows": 104,
       "date_min": "2023-11-30",
-      "date_max": "2026-03-28",
+      "date_max": "2026-04-15",
       "tracks": [
         "Actual",
         "Presale"
@@ -104,9 +105,9 @@
     {
       "district": "板橋區",
       "file": "板橋區_v3.parquet",
-      "rows": 77,
-      "date_min": "2024-01-12",
-      "date_max": "2026-04-02",
+      "rows": 93,
+      "date_min": "2023-05-25",
+      "date_max": "2026-04-05",
       "tracks": [
         "Actual",
         "Presale"
@@ -115,9 +116,9 @@
     {
       "district": "林口區",
       "file": "林口區_v3.parquet",
-      "rows": 40,
-      "date_min": "2025-10-08",
-      "date_max": "2026-03-27",
+      "rows": 60,
+      "date_min": "2023-08-26",
+      "date_max": "2026-04-16",
       "tracks": [
         "Actual",
         "Presale"
@@ -126,20 +127,19 @@
     {
       "district": "樹林區",
       "file": "樹林區_v3.parquet",
-      "rows": 16,
-      "date_min": "2023-09-20",
-      "date_max": "2026-03-24",
+      "rows": 28,
+      "date_min": "2025-09-28",
+      "date_max": "2026-04-14",
       "tracks": [
-        "Actual",
-        "Presale"
+        "Actual"
       ]
     },
     {
       "district": "永和區",
       "file": "永和區_v3.parquet",
-      "rows": 42,
-      "date_min": "2024-09-05",
-      "date_max": "2026-03-31",
+      "rows": 44,
+      "date_min": "2026-01-16",
+      "date_max": "2026-04-08",
       "tracks": [
         "Actual",
         "Presale"
@@ -148,9 +148,9 @@
     {
       "district": "汐止區",
       "file": "汐止區_v3.parquet",
-      "rows": 39,
-      "date_min": "2025-09-19",
-      "date_max": "2026-03-29",
+      "rows": 37,
+      "date_min": "2025-12-15",
+      "date_max": "2026-04-16",
       "tracks": [
         "Actual",
         "Presale"
@@ -159,9 +159,9 @@
     {
       "district": "泰山區",
       "file": "泰山區_v3.parquet",
-      "rows": 16,
-      "date_min": "2023-06-30",
-      "date_max": "2026-03-20",
+      "rows": 31,
+      "date_min": "2023-06-07",
+      "date_max": "2026-03-29",
       "tracks": [
         "Actual",
         "Presale"
@@ -170,9 +170,9 @@
     {
       "district": "淡水區",
       "file": "淡水區_v3.parquet",
-      "rows": 51,
-      "date_min": "2024-11-08",
-      "date_max": "2026-04-08",
+      "rows": 86,
+      "date_min": "2024-10-13",
+      "date_max": "2026-04-15",
       "tracks": [
         "Actual",
         "Presale"
@@ -182,8 +182,38 @@
       "district": "深坑區",
       "file": "深坑區_v3.parquet",
       "rows": 1,
-      "date_min": "2026-03-18",
-      "date_max": "2026-03-18",
+      "date_min": "2026-03-11",
+      "date_max": "2026-03-11",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "瑞芳區",
+      "file": "瑞芳區_v3.parquet",
+      "rows": 3,
+      "date_min": "2025-06-24",
+      "date_max": "2026-03-30",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "石門區",
+      "file": "石門區_v3.parquet",
+      "rows": 1,
+      "date_min": "2026-03-30",
+      "date_max": "2026-03-30",
+      "tracks": [
+        "Actual"
+      ]
+    },
+    {
+      "district": "萬里區",
+      "file": "萬里區_v3.parquet",
+      "rows": 4,
+      "date_min": "2026-02-14",
+      "date_max": "2026-03-17",
       "tracks": [
         "Actual"
       ]
@@ -191,9 +221,9 @@
     {
       "district": "蘆洲區",
       "file": "蘆洲區_v3.parquet",
-      "rows": 34,
-      "date_min": "2024-05-13",
-      "date_max": "2026-03-18",
+      "rows": 27,
+      "date_min": "2025-11-20",
+      "date_max": "2026-04-18",
       "tracks": [
         "Actual"
       ]
@@ -202,8 +232,8 @@
       "district": "貢寮區",
       "file": "貢寮區_v3.parquet",
       "rows": 1,
-      "date_min": "2026-03-25",
-      "date_max": "2026-03-25",
+      "date_min": "2026-04-13",
+      "date_max": "2026-04-13",
       "tracks": [
         "Actual"
       ]
@@ -211,19 +241,20 @@
     {
       "district": "金山區",
       "file": "金山區_v3.parquet",
-      "rows": 1,
-      "date_min": "2026-01-02",
-      "date_max": "2026-01-02",
+      "rows": 2,
+      "date_min": "2026-03-02",
+      "date_max": "2026-03-22",
       "tracks": [
-        "Actual"
+        "Actual",
+        "Presale"
       ]
     },
     {
       "district": "鶯歌區",
       "file": "鶯歌區_v3.parquet",
-      "rows": 44,
-      "date_min": "2023-05-09",
-      "date_max": "2026-03-20",
+      "rows": 41,
+      "date_min": "2024-01-07",
+      "date_max": "2026-04-03",
       "tracks": [
         "Actual",
         "Presale"
