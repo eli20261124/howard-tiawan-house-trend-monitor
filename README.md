@@ -116,7 +116,11 @@ FairValue = \beta_{1}(\text{Location}) + \beta_{2}(\text{Age}) + \beta_{3}(\text
 *   **Developer Name Extraction (建商萃取機制)**：新增針對預售屋「起造人」欄位的字串萃取邏輯 (擷取前四碼)，為後續的建案字典 (Project Dictionary) 與品牌建商溢價分析打下基礎。
 
 ---
-*Last updated: 2026-05*
+### 🔧 Fix: Data Persistence via GitHub Actions (2026-05-11)
+*   **Root Cause**: The `update_data.yml` workflow was running the Python pipeline but not committing the generated `data/processed/` files back to the repository, so GitHub Pages was never receiving updated data.
+*   **Fix Applied**: Replaced the "Commit refreshed data" step with a dedicated **"Commit and Push"** step using `git config --local`, `git add data/processed/`, and `git commit -m "auto: periodic data update"`. This ensures processed data is persisted to the repo after every successful pipeline run.
+
+*Last updated: 2026-05-11*
 
 ### ⚖️ Licensing & Terms
 This project is licensed under **CC BY-NC-SA 4.0**.
