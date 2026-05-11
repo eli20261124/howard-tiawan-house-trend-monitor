@@ -1103,6 +1103,8 @@ def compute_dom_proxy(
             .groupby("_ak")["_dt"]
             .first()
         )
+        if "Address" not in df.columns or df.empty:
+            return df
         df["_ak"]  = df["Address"].astype(str).str.strip().str.lower().str[:40]
         df["_adt"] = pd.to_datetime(df["Date"], format="%Y/%m/%d", errors="coerce")
         df["_pdt"] = df["_ak"].map(ps_map)
